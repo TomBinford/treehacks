@@ -14,6 +14,8 @@
   "scripts": {
     "build": "tsc",
     "start": "probot run ./lib/index.js",
+    "dev": "concurrently -n probot,frontend \"npm run start\" \"npm run dev:frontend\"",
+    "dev:frontend": "cd frontend && npm run dev",
     "test": "vitest"
   },
   "dependencies": {
@@ -21,6 +23,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
+    "concurrently": "^9.0.0",
     "nock": "^14.0.5",
     "smee-client": "^2.0.0",
     "vitest": "^2.0.0",

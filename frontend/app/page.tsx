@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Github, Loader2, Rocket, CheckCircle, Clock } from 'lucide-react';
-import { fetchJobs } from '@/lib/api';
+import { useRouter } from 'next/navigation';
+import { Github, Loader2, Rocket, CheckCircle, Clock, Plus } from 'lucide-react';
+import { fetchJobs, createJob } from '@/lib/api';
 import type { Job } from '@/lib/types';
 
 function statusToLabel(status: Job['status']): string {
@@ -46,8 +47,33 @@ function StatusBadge({ status }: { status: Job['status'] }) {
 }
 
 export default function LobbyPage() {
+  const router = useRouter();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [form, setForm] = useState({ repoName: '', issueTitle: '', issueDescription: '' });
+
+  const handleCreateJob = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError(null);
+    setCreating(true);
+    try {
+      const { arenaUrl, jobId } = await createJob({
+        repoName: form.repoName.trim(),
+        issueTitle: form.issueTitle.trim(),
+        issueDescription: form.issueDescription.trim(),
+      });
+      setShowForm(false);
+      setForm({ repoName: '', issueTitle: '', issueDescription: '' });
+      router.push(`/jobs/${jobId}`);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Failed to create job');
+    } finally {
+      setCreating(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -85,14 +111,90 @@ export default function LobbyPage() {
       </header>
 
       <main className="max-w-6xl mx-auto px-6 py-8">
-        <div className="mb-8">
-          <h2 className="text-xl font-semibold text-white mb-1">
-            Active Issues
-          </h2>
-          <p className="text-slate-500 text-sm">
-            GitHub Issues currently being processed by Arena agents
-          </p>
+        <div className="mb-8 flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-semibold text-white mb-1">
+              Active Jobs
+            </h2>
+            <p className="text-slate-500 text-sm">
+              Start agents from the UI or by commenting &quot;arena&quot; on a GitHub issue
+            </p>
+          </div>
+          <button
+            onClick={() => setShowForm(!showForm)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-medium transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            New job
+          </button>
         </div>
+
+        {showForm && (
+          <form
+            onSubmit={handleCreateJob}
+            className="mb-8 rounded-xl border border-slate-800 bg-slate-900/50 p-6 space-y-4"
+          >
+            <h3 className="font-semibold text-white">Create a new job</h3>
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Repo (owner/name)</label>
+              <input
+                type="text"
+                value={form.repoName}
+                onChange={(e) => setForm((f) => ({ ...f, repoName: e.target.value }))}
+                placeholder="owner/repo"
+                className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:border-violet-500"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Title</label>
+              <input
+                type="text"
+                value={form.issueTitle}
+                onChange={(e) => setForm((f) => ({ ...f, issueTitle: e.target.value }))}
+                placeholder="Fix navbar alignment"
+                className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:border-violet-500"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Description / Instructions</label>
+              <textarea
+                value={form.issueDescription}
+                onChange={(e) => setForm((f) => ({ ...f, issueDescription: e.target.value }))}
+                placeholder="Describe the changes you want the agents to make..."
+                rows={4}
+                className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:border-violet-500 resize-none"
+                required
+              />
+            </div>
+            {formError && (
+              <p className="text-red-400 text-sm">{formError}</p>
+            )}
+            <div className="flex gap-2">
+              <button
+                type="submit"
+                disabled={creating}
+                className="px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white font-medium"
+              >
+                {creating ? (
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" /> Starting...
+                  </span>
+                ) : (
+                  'Start agents'
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowForm(false)}
+                className="px-4 py-2 rounded-lg border border-slate-600 text-slate-400 hover:text-white"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        )}
 
         {loading ? (
           <div className="flex items-center justify-center py-20">
@@ -103,7 +205,7 @@ export default function LobbyPage() {
             <Rocket className="w-12 h-12 text-slate-600 mx-auto mb-4" />
             <p className="text-slate-400 mb-2">No active jobs</p>
             <p className="text-slate-500 text-sm">
-              Issues will appear here when Arena starts processing them
+              Create a job from the form above or comment &quot;arena&quot; on a GitHub issue
             </p>
           </div>
         ) : (
@@ -118,7 +220,7 @@ export default function LobbyPage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-3 mb-1">
                         <span className="text-slate-500 font-mono text-sm">
-                          #{job.issueId}
+                          {job.issueId ? `#${job.issueId}` : '—'}
                         </span>
                         <span className="text-slate-400 font-mono text-sm truncate">
                           {job.repoName}

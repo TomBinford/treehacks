@@ -5,7 +5,7 @@ const nextConfig = {
     return [
       {
         source: '/api/:path*',
-        destination: 'http://localhost:8000/api/:path*', // Proxy to your backend
+        destination: 'http://localhost:3000/api/:path*', // Proxy to Probot (consolidated)
       },
     ]
   },

@@ -1,36 +1,61 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Arena Frontend
 
-## Getting Started
+Next.js app for the Arena UI. Shows jobs (GitHub issues) and their Warp agent runs.
 
-First, run the development server:
+## Setup
+
+```bash
+cd frontend && npm install
+```
+
+## Running
+
+**Option A: Run everything together**
+
+From the project root:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+This starts both the Probot backend (port 3000) and this frontend (port 3001).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+**Option B: Run separately**
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Terminal 1 – Probot backend:
 
-## Learn More
+```bash
+npm start
+# or: probot run ./lib/index.js
+```
 
-To learn more about Next.js, take a look at the following resources:
+Terminal 2 – Frontend:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+cd frontend && npm run dev
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Test flow
 
-## Deploy on Vercel
+1. **Start Smee** (if not already) – forwards GitHub webhooks to localhost. Use your `WEBHOOK_PROXY_URL` from `.env`:
+   ```bash
+   npx smee-client -u $WEBHOOK_PROXY_URL -t http://localhost:3000
+   ```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+2. **Start the app** – from project root: `npm run dev` (runs both backend + frontend), or run `npm start` and `cd frontend && npm run dev` in separate terminals.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+3. **Set `ARENA_UI_URL`** (optional) – in `.env`, set `ARENA_UI_URL=http://localhost:3001` so the GitHub comment "View progress" links point to your local frontend.
+
+4. **Open the frontend** – http://localhost:3001
+
+5. **Start agents** in one of two ways:
+   - **From the UI**: Click "New job", fill in repo, title, and description, then "Start agents"
+   - **From GitHub**: Comment `arena` (or `arena: your instructions`) on an issue. The app will spawn agents and reply with a link.
+
+6. **View the job** – click the job in the lobby or use the link from the GitHub comment.
+
+**Note:** For the GitHub trigger, your app must subscribe to `issue_comment` events. Add it in GitHub App settings if needed.
+
+## API
+
+The frontend proxies `/api/*` to the Probot backend (localhost:3000). No CORS config needed.

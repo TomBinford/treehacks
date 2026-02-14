@@ -62,17 +62,17 @@ export function AgentCard({
 
       {/* Preview Area */}
       <div className="aspect-video bg-slate-950 rounded-lg border border-slate-800 mb-4 flex items-center justify-center relative overflow-hidden min-h-[120px]">
-        {isReady && agent.vercelUrl ? (
+        {isReady && (agent.vercelUrl || agent.sessionLink) ? (
           <>
             <iframe
-              src={agent.vercelUrl}
+              src={agent.vercelUrl ?? agent.sessionLink ?? ''}
               className="w-[200%] h-[200%] scale-50 origin-top-left pointer-events-none"
               title={`Preview ${formatAgentName(agent.id)}`}
               sandbox="allow-scripts"
             />
             {/* Overlay for full preview */}
             <a
-              href={agent.vercelUrl}
+              href={agent.vercelUrl ?? agent.sessionLink ?? '#'}
               target="_blank"
               rel="noopener noreferrer"
               className="absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 hover:bg-black/60 transition-all"
@@ -86,15 +86,17 @@ export function AgentCard({
             </a>
           </>
         ) : (
-          <p className="text-slate-600 text-xs">Waiting for deployment...</p>
+          <p className="text-slate-600 text-xs">
+            {agent.sessionLink ? 'Watch in Warp...' : 'Waiting for deployment...'}
+          </p>
         )}
       </div>
 
       {/* Actions */}
       <div className="flex gap-2">
-        {isReady && agent.vercelUrl && onPreview && (
+        {isReady && (agent.vercelUrl || agent.sessionLink) && onPreview && (
           <a
-            href={agent.vercelUrl}
+            href={agent.vercelUrl ?? agent.sessionLink ?? '#'}
             target="_blank"
             rel="noopener noreferrer"
             className="flex-1 py-2 px-3 text-center text-sm font-medium rounded-lg border border-slate-600 text-slate-300 hover:border-slate-500 hover:text-white transition-colors"
