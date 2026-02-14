@@ -15,7 +15,7 @@
     "build": "tsc",
     "start": "probot run ./lib/index.js",
     "dev": "concurrently -n probot,frontend \"npm run start\" \"npm run dev:frontend\"",
-    "dev:frontend": "cd frontend && npm run dev",
+    "dev:frontend": "cd ../frontend && npm run dev",
     "test": "vitest"
   },
   "dependencies": {

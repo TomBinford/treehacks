@@ -3,6 +3,7 @@ import express from "express";
 import { WarpClient, type RunState } from "./warp.js";
 import {
   createJob,
+  generateJobId,
   getJob,
   listJobs,
   updateAgent,
@@ -12,8 +13,9 @@ import {
 } from "./store.js";
 
 const WARP_API_KEY = process.env.WARP_API_KEY;
+const WARP_ENVIRONMENT_ID = process.env.WARP_ENVIRONMENT_ID;
 const ARENA_UI_URL = process.env.ARENA_UI_URL ?? "http://localhost:3000";
-const NUM_AGENTS = parseInt(process.env.NUM_AGENTS ?? "3", 10);
+const NUM_AGENTS = parseInt(process.env.NUM_AGENTS ?? "1", 10);
 
 const MONITOR_POLL_MS = 10_000;
 const MAJORITY_THRESHOLD = 0.5;
@@ -30,6 +32,7 @@ function warpStateToAgentStatus(state: RunState): AgentStatus {
     case "SUCCEEDED":
       return "ready";
     case "FAILED":
+    case "CANCELLED":
       return "failed";
     case "INPROGRESS":
     case "CLAIMED":
@@ -159,16 +162,42 @@ export function createJobAndSpawnAgents(params: {
   }
 
   const warp = new WarpClient(WARP_API_KEY);
-  const prompt = `GitHub Issue: ${params.issueTitle}\n\n${params.issueDescription}\n\nPlease implement a fix for this issue. Create a branch, make the necessary changes, and deploy a preview.`;
+  const jobId = generateJobId();
 
   const runIds: string[] = [];
   const sessionLinks: (string | null)[] = [];
 
+  const baseConfig = {
+    name: `arena-${jobId}`,
+    model_id: "claude-sonnet-4" as const,
+    ...(WARP_ENVIRONMENT_ID && { environment_id: WARP_ENVIRONMENT_ID }),
+  };
+
   return (async () => {
     for (let i = 0; i < NUM_AGENTS; i++) {
+      const agentNum = i + 1;
+      const branchName = `${jobId}-${agentNum}`;
+
+      const repoContext = WARP_ENVIRONMENT_ID
+        ? `\n\nThe repository (${params.repoName}) has been cloned and is available in your workspace. You can immediately explore the files and start coding—no need to clone or set up the repo.`
+        : `\n\nRepository: ${params.repoName}`;
+
+      const prompt = `Repository: ${params.repoName}
+
+GitHub Issue: ${params.issueTitle}
+
+${params.issueDescription}
+${repoContext}
+
+Instructions:
+- You are working on the repository \`${params.repoName}\`—all changes must target this repo
+- Create a branch named \`${branchName}\` for your pull request (e.g. \`git checkout -b ${branchName}\`)
+- Implement the fix
+- Deploy a preview`;
+
       const { run_id } = await warp.runAgent(prompt, {
-        title: `Arena: ${params.issueTitle} (Agent ${i + 1}/${NUM_AGENTS})`,
-        config: { name: `arena-issue-${params.issueId}` },
+        title: `Arena: ${params.issueTitle} (Agent ${agentNum}/${NUM_AGENTS})`,
+        config: baseConfig,
       });
       runIds.push(run_id);
       try {
@@ -180,6 +209,7 @@ export function createJobAndSpawnAgents(params: {
     }
 
     const job = createJob({
+      jobId,
       ...params,
       runIds,
       sessionLinks,

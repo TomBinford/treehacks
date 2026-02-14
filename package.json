@@ -1,0 +1,13 @@
+{
+  "name": "treehacks",
+  "private": true,
+  "workspaces": ["backend", "frontend"],
+  "scripts": {
+    "dev": "concurrently -n backend,frontend \"npm run start -w backend\" \"npm run dev -w frontend\"",
+    "build": "npm run build -w backend",
+    "start": "npm run start -w backend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  }
+}

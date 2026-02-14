@@ -30,9 +30,13 @@ export interface Job {
 
 const jobs = new Map<string, Job>();
 
-let nextId = 1;
+/** Generate a short job ID: first 8 characters of a UUID (no hyphens) */
+export function generateJobId(): string {
+  return crypto.randomUUID().replace(/-/g, "").slice(0, 8);
+}
 
 export function createJob(params: {
+  jobId: string;
   issueId: number;
   repoName: string;
   issueTitle: string;
@@ -42,7 +46,7 @@ export function createJob(params: {
   githubRepoOwner?: string;
   githubRepoName?: string;
 }): Job {
-  const id = `job_${nextId++}`;
+  const id = params.jobId;
   const agents: Agent[] = params.runIds.map((runId, i) => ({
     id: `agent_${["alpha", "beta", "gamma", "delta", "epsilon"][i] ?? `run_${i}`}`,
     runId,

@@ -11,7 +11,8 @@ export type RunState =
   | "CLAIMED"
   | "INPROGRESS"
   | "SUCCEEDED"
-  | "FAILED";
+  | "FAILED"
+  | "CANCELLED";
 
 export interface RunAgentResponse {
   run_id: string;
@@ -74,7 +75,7 @@ export class WarpClient {
     prompt: string,
     options?: {
       title?: string;
-      config?: { name?: string; model_id?: string };
+      config?: { name?: string; model_id?: string; environment_id?: string };
     }
   ): Promise<RunAgentResponse> {
     const body: Record<string, unknown> = { prompt };
