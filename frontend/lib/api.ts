@@ -42,6 +42,7 @@ const MOCK_JOB_DETAIL: JobDetail = {
         '✓ Deployment ready',
       ],
       vercelUrl: 'https://vercel.com',
+      sessionLink: 'https://app.warp.dev',
       stagehandVerify: {
         passed: true,
         reason: 'Navbar does not overlap logo on mobile viewport',
@@ -56,9 +57,10 @@ const MOCK_JOB_DETAIL: JobDetail = {
         '> npm run build',
         '✓ Build complete',
         'Deploying to Vercel...',
-        '✓ Preview deployed',
+        '✓ Deployment ready',
       ],
       vercelUrl: 'https://vercel.com',
+      sessionLink: 'https://app.warp.dev',
       stagehandVerify: {
         passed: true,
         reason: 'Verified that the header is now blue and properly aligned',
@@ -66,13 +68,14 @@ const MOCK_JOB_DETAIL: JobDetail = {
     },
     {
       id: 'agent_gamma',
-      status: 'deploying',
+      status: 'developing',
       terminalLogs: [
         '> npm run build',
         'Building...',
         'Compiling components...',
       ],
       vercelUrl: null,
+      sessionLink: 'https://app.warp.dev',
       stagehandVerify: null,
     },
   ],

@@ -1,10 +1,11 @@
 /**
  * Warp Oz Agent API client
- * https://app.warp.dev/api/v1
+ * Uses the official oz-agent-sdk: https://github.com/warpdotdev/oz-sdk-typescript
  */
 
-const WARP_API_BASE = "https://app.warp.dev/api/v1";
+import OzAPI from "oz-agent-sdk";
 
+// Run states from Oz Agent API (matches SDK RunState)
 export type RunState =
   | "QUEUED"
   | "PENDING"
@@ -14,25 +15,13 @@ export type RunState =
   | "FAILED"
   | "CANCELLED";
 
+export type RunItem = Awaited<
+  ReturnType<InstanceType<typeof OzAPI>["agent"]["runs"]["retrieve"]>
+>;
+
 export interface RunAgentResponse {
   run_id: string;
   state: RunState;
-}
-
-export interface RunItem {
-  run_id: string;
-  title: string;
-  state: RunState;
-  prompt: string;
-  created_at: string;
-  updated_at: string;
-  started_at: string | null;
-  status_message?: { message: string };
-  source: string;
-  session_id?: string;
-  session_link?: string;
-  creator?: { type: string; uid: string };
-  agent_config?: Record<string, unknown>;
 }
 
 export interface ListRunsResponse {
@@ -41,34 +30,13 @@ export interface ListRunsResponse {
 }
 
 export class WarpClient {
-  constructor(private apiKey: string) {
+  private client: OzAPI;
+
+  constructor(apiKey: string) {
     if (!apiKey) {
       throw new Error("WARP_API_KEY is required");
     }
-  }
-
-  private async request<T>(
-    method: string,
-    path: string,
-    body?: object
-  ): Promise<T> {
-    const url = `${WARP_API_BASE}${path}`;
-    const res = await fetch(url, {
-      method,
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`Warp API ${res.status}: ${errText}`);
-    }
-
-    return res.json() as Promise<T>;
+    this.client = new OzAPI({ apiKey });
   }
 
   async runAgent(
@@ -78,14 +46,23 @@ export class WarpClient {
       config?: { name?: string; model_id?: string; environment_id?: string };
     }
   ): Promise<RunAgentResponse> {
-    const body: Record<string, unknown> = { prompt };
-    if (options?.title) body.title = options.title;
-    if (options?.config) body.config = options.config;
-    return this.request<RunAgentResponse>("POST", "/agent/run", body);
+    const body = {
+      prompt,
+      title: options?.title,
+      config: options?.config,
+    };
+    console.log("[warp] runAgent request config:", JSON.stringify(body.config, null, 2));
+    const response = await this.client.agent.run(body);
+    console.log("[warp] runAgent response:", { run_id: response.run_id, state: response.state });
+    return { run_id: response.run_id, state: response.state };
   }
 
   async getRun(runId: string): Promise<RunItem> {
-    return this.request<RunItem>("GET", `/agent/runs/${runId}`);
+    const run = await this.client.agent.runs.retrieve(runId);
+    if (run.state === "FAILED" && run.status_message?.message) {
+      console.log("[warp] getRun", runId, "FAILED:", run.status_message.message);
+    }
+    return run;
   }
 
   async listRuns(params?: {
@@ -93,19 +70,25 @@ export class WarpClient {
     cursor?: string;
     state?: RunState | RunState[];
     created_after?: string;
+    config_name?: string;
+    model_id?: string;
+    creator?: string;
+    source?: string;
+    created_before?: string;
   }): Promise<ListRunsResponse> {
-    const search = new URLSearchParams();
-    if (params?.limit) search.set("limit", String(params.limit));
-    if (params?.cursor) search.set("cursor", params.cursor);
+    const query: Parameters<OzAPI["agent"]["runs"]["list"]>[0] = {};
+    if (params?.limit != null) query.limit = params.limit;
+    if (params?.cursor) query.cursor = params.cursor;
     if (params?.state) {
-      const states = Array.isArray(params.state) ? params.state : [params.state];
-      states.forEach((s) => search.append("state", s));
+      query.state = Array.isArray(params.state) ? params.state : [params.state];
     }
-    if (params?.created_after) search.set("created_after", params.created_after);
-    const qs = search.toString();
-    return this.request<ListRunsResponse>(
-      "GET",
-      `/agent/runs${qs ? `?${qs}` : ""}`
-    );
+    if (params?.created_after) query.created_after = params.created_after;
+    if (params?.config_name) query.name = params.config_name;
+    if (params?.model_id) query.model_id = params.model_id;
+    if (params?.creator) query.creator = params.creator;
+    if (params?.source) query.source = params.source as never;
+    if (params?.created_before) query.created_before = params.created_before;
+
+    return this.client.agent.runs.list(query ?? undefined);
   }
 }

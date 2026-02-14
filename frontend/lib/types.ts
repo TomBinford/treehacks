@@ -2,7 +2,7 @@
 
 export type JobStatus = 'processing' | 'review_needed' | 'completed';
 
-export type AgentStatus = 'coding' | 'deploying' | 'ready' | 'failed';
+export type AgentStatus = 'initializing' | 'developing' | 'ready' | 'failed';
 
 export interface Job {
   id: string;

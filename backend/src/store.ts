@@ -2,7 +2,7 @@
  * In-memory job store. Replace with DB (e.g. Postgres) for production.
  */
 
-export type AgentStatus = "coding" | "deploying" | "ready" | "failed";
+export type AgentStatus = "initializing" | "developing" | "ready" | "failed";
 export type JobStatus = "processing" | "review_needed" | "completed";
 
 export interface Agent {
@@ -50,7 +50,7 @@ export function createJob(params: {
   const agents: Agent[] = params.runIds.map((runId, i) => ({
     id: `agent_${["alpha", "beta", "gamma", "delta", "epsilon"][i] ?? `run_${i}`}`,
     runId,
-    status: "coding" as AgentStatus,
+    status: "initializing" as AgentStatus,
     terminalLogs: ["Agent started...", "Connecting to Warp..."],
     vercelUrl: null,
     sessionLink: params.sessionLinks[i] ?? null,

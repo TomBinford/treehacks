@@ -96,7 +96,7 @@ export default function ArenaPage() {
               </h1>
               <p className="text-slate-400 text-sm mt-0.5">
                 Arena Active • {agents.length} Warp Agents
-                {readyCount > 0 && ` • ${readyCount} ready`}
+                {readyCount > 0 && ` • ${readyCount} ready for review`}
               </p>
             </div>
           </div>

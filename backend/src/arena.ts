@@ -17,6 +17,10 @@ const WARP_ENVIRONMENT_ID = process.env.WARP_ENVIRONMENT_ID;
 const ARENA_UI_URL = process.env.ARENA_UI_URL ?? "http://localhost:3000";
 const NUM_AGENTS = parseInt(process.env.NUM_AGENTS ?? "1", 10);
 
+// Debug: log env config on startup
+console.log("[arena] WARP_ENVIRONMENT_ID:", WARP_ENVIRONMENT_ID ?? "(not set)");
+console.log("[arena] WARP_API_KEY:", WARP_API_KEY ? "***" + WARP_API_KEY.slice(-4) : "(not set)");
+
 const MONITOR_POLL_MS = 10_000;
 const MAJORITY_THRESHOLD = 0.5;
 const IDLE_TIMEOUT_MS = 60_000;
@@ -35,10 +39,13 @@ function warpStateToAgentStatus(state: RunState): AgentStatus {
     case "CANCELLED":
       return "failed";
     case "INPROGRESS":
+      return "developing";
+    case "QUEUED":
+    case "PENDING":
     case "CLAIMED":
-      return "deploying";
+      return "initializing";
     default:
-      return "coding";
+      return "initializing";
   }
 }
 
@@ -95,11 +102,17 @@ async function monitorRuns(): Promise<void> {
           }
         }
 
+        const statusMsg = run.status_message?.message ?? `State: ${run.state}`;
+        if (newStatus === "failed") {
+          console.log("[arena] Run", runId, "FAILED:", statusMsg);
+        } else if (newStatus !== agent.status) {
+          console.log("[arena] Run", runId, "status:", agent.status, "->", newStatus, statusMsg);
+        }
         updateAgent(jobId, runId, {
           status: newStatus,
           terminalLogs: [
             ...agent.terminalLogs.slice(0, -1),
-            run.status_message?.message ?? `State: ${run.state}`,
+            statusMsg,
           ],
           sessionLink: run.session_link ?? agent.sessionLink,
           vercelUrl: newStatus === "ready" ? agent.vercelUrl : agent.vercelUrl,
@@ -169,9 +182,12 @@ export function createJobAndSpawnAgents(params: {
 
   const baseConfig = {
     name: `arena-${jobId}`,
-    model_id: "claude-sonnet-4" as const,
+    model_id: "claude-4-sonnet" as const,
     ...(WARP_ENVIRONMENT_ID && { environment_id: WARP_ENVIRONMENT_ID }),
   };
+
+  console.log("[arena] Creating job", jobId, "with config:", JSON.stringify(baseConfig, null, 2));
+  console.log("[arena] WARP_ENVIRONMENT_ID being used:", WARP_ENVIRONMENT_ID ?? "(none - running without environment)");
 
   return (async () => {
     for (let i = 0; i < NUM_AGENTS; i++) {
@@ -195,15 +211,19 @@ Instructions:
 - Implement the fix
 - Deploy a preview`;
 
-      const { run_id } = await warp.runAgent(prompt, {
+      console.log("[arena] Spawning agent", agentNum, "/", NUM_AGENTS);
+      const { run_id, state } = await warp.runAgent(prompt, {
         title: `Arena: ${params.issueTitle} (Agent ${agentNum}/${NUM_AGENTS})`,
         config: baseConfig,
       });
+      console.log("[arena] Agent spawned run_id:", run_id, "state:", state);
       runIds.push(run_id);
       try {
         const run = await warp.getRun(run_id);
+        console.log("[arena] Run", run_id, "session_link:", run.session_link ?? "(none)", "status_message:", run.status_message?.message ?? "(none)");
         sessionLinks.push(run.session_link ?? null);
-      } catch {
+      } catch (err) {
+        console.warn("[arena] Failed to fetch run", run_id, ":", err);
         sessionLinks.push(null);
       }
     }
@@ -263,6 +283,7 @@ export function mountArenaRoutes(router: Router): void {
     }
 
     try {
+      console.log("[arena] POST /jobs", { repoName, issueTitle });
       const data = await createJobAndSpawnAgents({
         issueId,
         repoName,
@@ -271,9 +292,10 @@ export function mountArenaRoutes(router: Router): void {
         githubRepoOwner: owner,
         githubRepoName: repo,
       });
+      console.log("[arena] Job created:", data.jobId, "arenaUrl:", data.arenaUrl);
       return res.status(201).json(data);
     } catch (err) {
-      console.error("Failed to spawn Warp agents:", err);
+      console.error("[arena] Failed to spawn Warp agents:", err);
       return res.status(502).json({
         error: "Failed to spawn Warp agents",
         details: err instanceof Error ? err.message : String(err),

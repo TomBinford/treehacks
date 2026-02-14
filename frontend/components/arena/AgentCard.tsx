@@ -8,6 +8,13 @@ function formatAgentName(id: string): string {
   return match ? match[1].charAt(0).toUpperCase() + match[1].slice(1) : id;
 }
 
+const STATUS_LABELS: Record<Agent['status'], string> = {
+  initializing: 'Initializing environment',
+  developing: 'Developing',
+  ready: 'Ready for Review',
+  failed: 'Failed',
+};
+
 export function AgentCard({
   agent,
   onPreview,
@@ -38,18 +45,15 @@ export function AgentCard({
           </h3>
           <span
             className={`text-xs uppercase tracking-wider font-bold ${
-              isReady ? 'text-emerald-400' : 'text-amber-400'
+              isReady ? 'text-emerald-400' : agent.status === 'failed' ? 'text-red-400' : 'text-amber-400'
             }`}
           >
-            {agent.status}
+            {STATUS_LABELS[agent.status]}
           </span>
         </div>
 
         {/* Status Icon */}
-        {agent.status === 'coding' && (
-          <Loader2 className="w-5 h-5 text-amber-400 animate-spin shrink-0" />
-        )}
-        {agent.status === 'deploying' && (
+        {(agent.status === 'initializing' || agent.status === 'developing') && (
           <Loader2 className="w-5 h-5 text-amber-400 animate-spin shrink-0" />
         )}
         {agent.status === 'ready' && (
@@ -60,48 +64,62 @@ export function AgentCard({
         )}
       </div>
 
-      {/* Preview Area */}
+      {/* Preview Area - show Warp Console link whenever sessionLink exists (including while developing) */}
       <div className="aspect-video bg-slate-950 rounded-lg border border-slate-800 mb-4 flex items-center justify-center relative overflow-hidden min-h-[120px]">
-        {isReady && (agent.vercelUrl || agent.sessionLink) ? (
+        {agent.sessionLink ? (
           <>
-            <iframe
-              src={agent.vercelUrl ?? agent.sessionLink ?? ''}
-              className="w-[200%] h-[200%] scale-50 origin-top-left pointer-events-none"
-              title={`Preview ${formatAgentName(agent.id)}`}
-              sandbox="allow-scripts"
-            />
-            {/* Overlay for full preview */}
-            <a
-              href={agent.vercelUrl ?? agent.sessionLink ?? '#'}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 hover:bg-black/60 transition-all"
-              onClick={(e) => {
-                onPreview?.();
-              }}
-            >
-              <span className="flex items-center gap-2 text-white font-bold bg-black/80 px-4 py-2 rounded-full">
-                Open Interactive Preview <ExternalLink className="w-4 h-4" />
-              </span>
-            </a>
+            {isReady && agent.vercelUrl ? (
+              <>
+                <iframe
+                  src={agent.vercelUrl}
+                  className="w-[200%] h-[200%] scale-50 origin-top-left pointer-events-none"
+                  title={`View Warp Console ${formatAgentName(agent.id)}`}
+                  sandbox="allow-scripts"
+                />
+                <a
+                  href={agent.vercelUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 hover:bg-black/60 transition-all"
+                  onClick={() => onPreview?.()}
+                >
+                  <span className="flex items-center gap-2 text-white font-bold bg-black/80 px-4 py-2 rounded-full">
+                    View Warp Console <ExternalLink className="w-4 h-4" />
+                  </span>
+                </a>
+              </>
+            ) : (
+              <a
+                href={agent.sessionLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex flex-col items-center justify-center gap-2 p-4 text-slate-300 hover:text-white transition-colors w-full h-full"
+              >
+                <ExternalLink className="w-8 h-8" />
+                <span className="text-sm font-medium">Watch live in Warp</span>
+                <span className="text-xs text-slate-500">
+                  {agent.status === 'developing' ? 'Agent is working...' : agent.status === 'initializing' ? 'Starting up...' : 'Open to view terminal'}
+                </span>
+              </a>
+            )}
           </>
         ) : (
           <p className="text-slate-600 text-xs">
-            {agent.sessionLink ? 'Watch in Warp...' : 'Waiting for deployment...'}
+            Waiting for environment...
           </p>
         )}
       </div>
 
-      {/* Actions */}
+      {/* Actions - View Warp Console available whenever sessionLink exists */}
       <div className="flex gap-2">
-        {isReady && (agent.vercelUrl || agent.sessionLink) && onPreview && (
+        {agent.sessionLink && (
           <a
-            href={agent.vercelUrl ?? agent.sessionLink ?? '#'}
+            href={agent.sessionLink}
             target="_blank"
             rel="noopener noreferrer"
             className="flex-1 py-2 px-3 text-center text-sm font-medium rounded-lg border border-slate-600 text-slate-300 hover:border-slate-500 hover:text-white transition-colors"
           >
-            Preview
+            View Warp Console
           </a>
         )}
         <button
