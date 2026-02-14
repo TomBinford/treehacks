@@ -7,6 +7,11 @@ import { Github, Loader2, Rocket, CheckCircle, Clock, Plus } from 'lucide-react'
 import { fetchJobs, createJob } from '@/lib/api';
 import type { Job } from '@/lib/types';
 
+const REPO_OPTIONS = [
+  'gsonntag/treehacks-testing-repo',
+  'TomBinford/treehacks-testing-repo',
+] as const;
+
 function statusToLabel(status: Job['status']): string {
   switch (status) {
     case 'processing':
@@ -137,14 +142,21 @@ export default function LobbyPage() {
             <h3 className="font-semibold text-white">Create a new job</h3>
             <div>
               <label className="block text-sm text-slate-400 mb-1">Repo (owner/name)</label>
-              <input
-                type="text"
+              <select
                 value={form.repoName}
                 onChange={(e) => setForm((f) => ({ ...f, repoName: e.target.value }))}
-                placeholder="owner/repo"
-                className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:border-violet-500"
+                className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white focus:outline-none focus:border-violet-500"
                 required
-              />
+              >
+                <option value="" className="bg-slate-800 text-slate-500">
+                  Select from authorized repositories
+                </option>
+                {REPO_OPTIONS.map((repo) => (
+                  <option key={repo} value={repo} className="bg-slate-800">
+                    {repo}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="block text-sm text-slate-400 mb-1">Title</label>
