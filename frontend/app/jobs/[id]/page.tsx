@@ -155,7 +155,8 @@ export default function ArenaPage() {
                   key={agent.id}
                   agent={agent}
                   onPreview={() => {
-                    if (agent.vercelUrl) window.open(agent.vercelUrl);
+                    const url = agent.vercelUrl ?? agent.sessionLink;
+                    if (url) window.open(url);
                   }}
                   onSelect={() => handleSelectWinner(agent.id)}
                 />
