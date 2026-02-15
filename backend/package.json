@@ -19,6 +19,8 @@
     "test": "vitest"
   },
   "dependencies": {
+    "@octokit/auth-app": "^6.1.4",
+    "@octokit/rest": "^22.0.1",
     "oz-agent-sdk": "^1.0.0-alpha.8",
     "probot": "^13.4.5"
   },

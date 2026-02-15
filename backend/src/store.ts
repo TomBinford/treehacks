@@ -2,7 +2,14 @@
  * In-memory job store. Replace with DB (e.g. Postgres) for production.
  */
 
-export type AgentStatus = "initializing" | "developing" | "ready" | "failed";
+export type AgentStatus =
+  | "initializing"     // Agent is starting up
+  | "developing"       // Agent is working on code
+  | "pushing"          // Agent is pushing code to GitHub
+  | "deploying"        // GitHub Action is deploying to Vercel
+  | "ready"            // Deployment succeeded, preview available
+  | "deployment_failed"// Deployment failed but code was pushed
+  | "failed";          // Agent or push failed
 export type JobStatus = "processing" | "review_needed" | "completed";
 
 export interface Agent {
@@ -13,6 +20,12 @@ export interface Agent {
   vercelUrl: string | null;
   sessionLink: string | null;
   stagehandVerify: { passed: boolean; reason: string } | null;
+  branchName: string;  // The branch this agent is working on
+  deploymentStatus: {
+    workflowRunId: string | null;
+    deploymentId: string | null;
+    lastCheckedAt: string | null;
+  } | null;
 }
 
 export interface Job {
@@ -43,6 +56,7 @@ export function createJob(params: {
   issueDescription: string;
   runIds: string[];
   sessionLinks: (string | null)[];
+  branchNames: string[];
   githubRepoOwner?: string;
   githubRepoName?: string;
 }): Job {
@@ -55,6 +69,8 @@ export function createJob(params: {
     vercelUrl: null,
     sessionLink: params.sessionLinks[i] ?? null,
     stagehandVerify: null,
+    branchName: params.branchNames[i],
+    deploymentStatus: null,
   }));
 
   const job: Job = {
@@ -89,7 +105,7 @@ export function updateAgent(
   jobId: string,
   runId: string,
   updates: Partial<
-    Pick<Agent, "status" | "terminalLogs" | "vercelUrl" | "sessionLink" | "stagehandVerify">
+    Pick<Agent, "status" | "terminalLogs" | "vercelUrl" | "sessionLink" | "stagehandVerify" | "deploymentStatus">
   >
 ): void {
   const job = jobs.get(jobId);
