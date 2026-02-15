@@ -15,6 +15,7 @@ import {
   createGitHubClient,
   monitorBranchDeployment,
 } from "./github.js";
+import { getDeploymentPreviewUrl } from "./vercel.js";
 import type { Octokit } from "@octokit/rest";
 
 const WARP_API_KEY = process.env.WARP_API_KEY;
@@ -147,9 +148,14 @@ async function monitorRuns(): Promise<void> {
 
           // Update status based on deployment state
           if (deploymentResult.status === "success") {
-            console.log(`[arena] Deployment succeeded for ${agent.branchName}: ${deploymentResult.vercelUrl ?? 'no URL'}`);
+            let resolvedUrl = deploymentResult.vercelUrl;
+            // Resolve vercel.com dashboard URLs to actual preview URLs (*.vercel.app)
+            if (resolvedUrl?.includes("vercel.com/")) {
+              resolvedUrl = (await getDeploymentPreviewUrl(resolvedUrl)) ?? resolvedUrl;
+            }
+            console.log(`[arena] Deployment succeeded for ${agent.branchName}: ${resolvedUrl ?? 'no URL'}`);
             finalStatus = "ready";
-            vercelUrl = deploymentResult.vercelUrl;
+            vercelUrl = resolvedUrl;
             if (vercelUrl) {
               logs.push(`✓ Deployed to Vercel: ${vercelUrl}`);
             } else {
@@ -215,6 +221,9 @@ async function monitorRuns(): Promise<void> {
       (a) => a.status === "ready" || a.status === "failed" || a.status === "deployment_failed"
     ).length;
     const total = job2.agents.length;
+    const hasReadyWithVercel = job2.agents.some(
+      (a) => a.status === "ready" && a.vercelUrl
+    );
     const majorityReached = finished >= Math.ceil(total * MAJORITY_THRESHOLD);
     const elapsed = Date.now() - meta.startedAt;
     const idleSinceLast = Date.now() - meta.lastFinisherAt;
@@ -224,10 +233,16 @@ async function monitorRuns(): Promise<void> {
       meta.lastFinisherAt > 0 &&
       idleSinceLast >= IDLE_TIMEOUT_MS;
 
+    // Transition when: (1) at least one agent has Vercel URL, or (2) all agents finished (failed/deployment_failed)
+    const canTransition =
+      hasReadyWithVercel ||
+      (finished === total && job2.agents.every((a) => a.status === "failed" || a.status === "deployment_failed"));
+
     if (
-      finished === total ||
-      maxWaitReached ||
-      (majorityReached && idleTimeoutReached)
+      canTransition &&
+      (finished === total ||
+        maxWaitReached ||
+        (majorityReached && idleTimeoutReached))
     ) {
       updateJobStatus(jobId, "review_needed");
       monitoredJobs.delete(jobId);

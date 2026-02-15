@@ -10,10 +10,19 @@ import { WinnerModal } from '@/components/arena/WinnerModal';
 import { fetchJobDetail, selectWinner } from '@/lib/api';
 import type { JobDetail, Agent } from '@/lib/types';
 
-function jobStatusToLabel(status: JobDetail['status']): string {
+function jobStatusToLabel(
+  status: JobDetail['status'],
+  agents: Agent[] = []
+): string {
   switch (status) {
-    case 'processing':
+    case 'processing': {
+      const hasDeploying = agents.some(
+        (a) => a.status === 'pushing' || a.status === 'deploying'
+      );
+      const hasReady = agents.some((a) => a.status === 'ready');
+      if (hasDeploying && !hasReady) return 'Deploying to Vercel...';
       return 'Coding (Warp)';
+    }
     case 'review_needed':
       return 'Ready for Review';
     case 'completed':
@@ -112,7 +121,7 @@ export default function ArenaPage() {
             {job?.status === 'processing' && (
               <Loader2 className="w-4 h-4 animate-spin" />
             )}
-            {job ? jobStatusToLabel(job.status) : 'Loading...'}
+            {job ? jobStatusToLabel(job.status, job.agents) : 'Loading...'}
           </span>
         </div>
       </header>

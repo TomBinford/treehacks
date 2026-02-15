@@ -87,6 +87,45 @@ export async function deployBranch(params: {
   }
 }
 
+/**
+ * Resolve a Vercel dashboard URL (vercel.com/...) to the actual preview URL (*.vercel.app).
+ * Also accepts a raw deployment ID.
+ * Returns null if VERCEL_TOKEN is not set or the deployment cannot be fetched.
+ */
+export async function getDeploymentPreviewUrl(
+  deploymentIdOrDashboardUrl: string
+): Promise<string | null> {
+  if (!VERCEL_TOKEN) return null;
+
+  let deploymentId = deploymentIdOrDashboardUrl;
+  // Extract deployment ID from vercel.com dashboard URL (e.g. https://vercel.com/org/project/dpl_xxx or .../AfgmSYjErWAnru9XiXmEwFE76xYr)
+  if (deploymentIdOrDashboardUrl.includes("vercel.com/")) {
+    const match = deploymentIdOrDashboardUrl.match(/vercel\.com\/[^/]+\/[^/]+\/([^/?]+)/);
+    deploymentId = match?.[1] ?? deploymentIdOrDashboardUrl;
+  }
+
+  try {
+    const url = new URL(`https://api.vercel.com/v13/deployments/${deploymentId}`);
+    if (VERCEL_TEAM_ID) {
+      url.searchParams.set("teamId", VERCEL_TEAM_ID);
+    }
+
+    const res = await fetch(url.toString(), {
+      headers: { Authorization: `Bearer ${VERCEL_TOKEN}` },
+    });
+
+    if (!res.ok) return null;
+
+    const data = (await res.json()) as { url?: string; readyState?: string };
+    if (data.readyState === "READY" && data.url) {
+      return data.url.startsWith("http") ? data.url : `https://${data.url}`;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 async function pollDeploymentReady(deploymentId: string): Promise<string | null> {
   const maxAttempts = 30;
   const intervalMs = 5000;

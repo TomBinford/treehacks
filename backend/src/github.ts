@@ -93,21 +93,12 @@ export async function createGitHubClient(installationId?: number): Promise<Octok
     throw new Error("GitHub App credentials (APP_ID, PRIVATE_KEY) not configured");
   }
 
-  const appOctokit = new Octokit({
-    authStrategy: createAppAuth,
-    auth: {
-      appId: APP_ID,
-      privateKey: PRIVATE_KEY,
-    },
-  });
-
   // If no installation ID provided, use the first installation
   if (!installationId) {
-    const { data: installations } = await appOctokit.apps.listInstallations();
-    if (installations.length === 0) {
-      throw new Error("GitHub App has no installations");
+    installationId = parseInt(process.env.INSTALLATION_ID ?? "0", 10);
+    if (isNaN(installationId)) {
+      throw new Error("INSTALLATION_ID is not a valid number");
     }
-    installationId = installations[0].id;
   }
 
   // Create an installation-specific client
@@ -255,7 +246,29 @@ export async function branchExists(
 }
 
 /**
- * Try to extract a Vercel preview URL from commit statuses (e.g. Vercel adds a status with target_url)
+ * Get the head commit SHA for a branch
+ */
+async function getBranchHeadSha(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  branch: string
+): Promise<string | null> {
+  try {
+    const { data } = await octokit.repos.getBranch({
+      owner,
+      repo,
+      branch,
+    });
+    return data.commit.sha ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Try to extract a Vercel preview URL from commit statuses (e.g. Vercel adds a status with target_url).
+ * Prefers actual deployment URLs (*.vercel.app, *.vercel.sh) over dashboard URLs (vercel.com/...).
  */
 async function getVercelUrlFromCommitStatus(
   octokit: Octokit,
@@ -269,14 +282,18 @@ async function getVercelUrlFromCommitStatus(
       repo,
       ref,
     });
-    // Look for Vercel-related status (common patterns: "Vercel", "Preview", vercel.app URLs)
+    let vercelComUrl: string | null = null;
     for (const status of data.statuses) {
       const ctx = (status.context ?? "").toLowerCase();
       const url = status.target_url;
-      if (url && (ctx.includes("vercel") || ctx.includes("preview") || (url.includes("vercel.app") || url.includes("vercel.sh")))) {
+      if (!url || !(ctx.includes("vercel") || ctx.includes("preview") || url.includes("vercel.app") || url.includes("vercel.sh"))) continue;
+      // Prefer actual deployment URLs over dashboard links
+      if (url.includes("vercel.app") || url.includes("vercel.sh")) {
         return url;
       }
+      vercelComUrl = vercelComUrl ?? url;
     }
+    return vercelComUrl;
   } catch {
     // Ignore - commit statuses are optional
   }
@@ -310,30 +327,48 @@ export async function monitorBranchDeployment(
     };
   }
 
+  // Get branch head SHA (needed when no workflow runs - Vercel may use SHA for deployments/statuses)
+  const branchHeadSha = await getBranchHeadSha(octokit, owner, repo, branch);
+
   // Get workflow runs to see if deployment is in progress
   const workflowRuns = await getWorkflowRunsForBranch(octokit, owner, repo, branch);
   const latestRun = workflowRuns[0];
   if (latestRun) {
-    console.log(`[github] Workflow run #${latestRun.id} for ${branch}: status=${latestRun.status}, conclusion=${latestRun.conclusion ?? 'none'}`);
+    console.log(`[github] Workflow run #${latestRun.id} for ${owner}/${repo}@${branch}: status=${latestRun.status}, conclusion=${latestRun.conclusion ?? 'none'}`);
   }
 
   // Get deployments - try branch ref first, then SHA (Vercel often creates deployments with commit SHA)
   let deployments = await getDeploymentsForRef(octokit, owner, repo, branch);
-  if (deployments.length === 0 && latestRun?.head_sha) {
-    deployments = await getDeploymentsForRef(octokit, owner, repo, latestRun.head_sha);
+  const shaToTry = latestRun?.head_sha ?? branchHeadSha;
+  if (deployments.length === 0 && shaToTry) {
+    deployments = await getDeploymentsForRef(octokit, owner, repo, shaToTry);
     if (deployments.length > 0) {
-      console.log(`[github] Found ${deployments.length} deployment(s) for SHA ${latestRun.head_sha.slice(0, 7)}`);
+      console.log(`[github] Found ${deployments.length} deployment(s) for SHA ${shaToTry.slice(0, 7)}`);
     }
   }
   const latestDeployment = deployments[0];
   if (latestDeployment) {
-    console.log(`[github] Deployment #${latestDeployment.id} for ${branch}: env=${latestDeployment.environment}`);
+    console.log(`[github] Deployment #${latestDeployment.id} for ${owner}/${repo}@${branch}: env=${latestDeployment.environment}`);
   }
 
   // If no deployment yet, check workflow status - FALLBACK for setups that don't create GitHub Deployments
   if (!latestDeployment) {
     if (!latestRun) {
-      console.log(`[github] No workflow runs or deployments for ${branch} yet`);
+      // No workflow runs (Vercel native integration doesn't use GitHub Actions) - check commit statuses
+      // Vercel adds status checks with preview URL when it deploys
+      if (branchHeadSha) {
+        const vercelUrl = await getVercelUrlFromCommitStatus(octokit, owner, repo, branchHeadSha);
+        if (vercelUrl) {
+          console.log(`[github] Found Vercel URL from commit status for ${owner}/${repo}@${branch}`);
+          return {
+            status: "success",
+            vercelUrl,
+            workflowRunId: null,
+            deploymentId: null,
+          };
+        }
+      }
+      console.log(`[github] No workflow runs, deployments, or Vercel status for ${owner}/${repo}@${branch} yet`);
       return {
         status: "not_found",
         vercelUrl: null,

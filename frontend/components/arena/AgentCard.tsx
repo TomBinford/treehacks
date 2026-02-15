@@ -11,7 +11,10 @@ function formatAgentName(id: string): string {
 const STATUS_LABELS: Record<Agent['status'], string> = {
   initializing: 'Initializing environment',
   developing: 'Developing',
+  pushing: 'Pushing to GitHub',
+  deploying: 'Deploying to Vercel',
   ready: 'Ready for Review',
+  deployment_failed: 'Deployment failed',
   failed: 'Failed',
 };
 
@@ -45,7 +48,11 @@ export function AgentCard({
           </h3>
           <span
             className={`text-xs uppercase tracking-wider font-bold ${
-              isReady ? 'text-emerald-400' : agent.status === 'failed' ? 'text-red-400' : 'text-amber-400'
+              isReady
+              ? 'text-emerald-400'
+              : agent.status === 'failed' || agent.status === 'deployment_failed'
+                ? 'text-red-400'
+                : 'text-amber-400'
             }`}
           >
             {STATUS_LABELS[agent.status]}
@@ -53,18 +60,21 @@ export function AgentCard({
         </div>
 
         {/* Status Icon */}
-        {(agent.status === 'initializing' || agent.status === 'developing') && (
+        {(agent.status === 'initializing' ||
+          agent.status === 'developing' ||
+          agent.status === 'pushing' ||
+          agent.status === 'deploying') && (
           <Loader2 className="w-5 h-5 text-amber-400 animate-spin shrink-0" />
         )}
         {agent.status === 'ready' && (
           <Check className="w-5 h-5 text-emerald-400 shrink-0" />
         )}
-        {agent.status === 'failed' && (
+        {(agent.status === 'failed' || agent.status === 'deployment_failed') && (
           <AlertTriangle className="w-5 h-5 text-red-400 shrink-0" />
         )}
       </div>
 
-      {/* Preview Area - show Warp Console link whenever sessionLink exists (including while developing) */}
+      {/* Preview Area - Vercel iframe when ready, Warp link while developing/deploying */}
       <div className="aspect-video bg-slate-950 rounded-lg border border-slate-800 mb-4 flex items-center justify-center relative overflow-hidden min-h-[120px]">
         {agent.sessionLink ? (
           <>
@@ -73,7 +83,7 @@ export function AgentCard({
                 <iframe
                   src={agent.vercelUrl}
                   className="w-[200%] h-[200%] scale-50 origin-top-left pointer-events-none"
-                  title={`View Warp Console ${formatAgentName(agent.id)}`}
+                  title={`Preview ${formatAgentName(agent.id)}`}
                   sandbox="allow-scripts"
                 />
                 <a
@@ -81,10 +91,9 @@ export function AgentCard({
                   target="_blank"
                   rel="noopener noreferrer"
                   className="absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 hover:bg-black/60 transition-all"
-                  onClick={() => onPreview?.()}
                 >
                   <span className="flex items-center gap-2 text-white font-bold bg-black/80 px-4 py-2 rounded-full">
-                    View Warp Console <ExternalLink className="w-4 h-4" />
+                    View Preview <ExternalLink className="w-4 h-4" />
                   </span>
                 </a>
               </>
@@ -98,7 +107,15 @@ export function AgentCard({
                 <ExternalLink className="w-8 h-8" />
                 <span className="text-sm font-medium">Watch live in Warp</span>
                 <span className="text-xs text-slate-500">
-                  {agent.status === 'developing' ? 'Agent is working...' : agent.status === 'initializing' ? 'Starting up...' : 'Open to view terminal'}
+                  {agent.status === 'developing'
+                    ? 'Agent is working...'
+                    : agent.status === 'initializing'
+                      ? 'Starting up...'
+                      : agent.status === 'pushing'
+                        ? 'Pushing code...'
+                        : agent.status === 'deploying'
+                          ? 'Deploying to Vercel...'
+                          : 'Open to view terminal'}
                 </span>
               </a>
             )}
@@ -110,8 +127,18 @@ export function AgentCard({
         )}
       </div>
 
-      {/* Actions - View Warp Console available whenever sessionLink exists */}
+      {/* Actions - Vercel as main, Warp as secondary when ready */}
       <div className="flex gap-2">
+        {isReady && agent.vercelUrl && (
+          <a
+            href={agent.vercelUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex-1 py-2 px-3 text-center text-sm font-medium rounded-lg bg-violet-600 text-white hover:bg-violet-500 transition-colors"
+          >
+            View Vercel
+          </a>
+        )}
         {agent.sessionLink && (
           <a
             href={agent.sessionLink}
@@ -119,7 +146,7 @@ export function AgentCard({
             rel="noopener noreferrer"
             className="flex-1 py-2 px-3 text-center text-sm font-medium rounded-lg border border-slate-600 text-slate-300 hover:border-slate-500 hover:text-white transition-colors"
           >
-            View Warp Console
+            View Warp
           </a>
         )}
         <button
