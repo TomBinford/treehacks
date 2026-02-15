@@ -67,7 +67,7 @@ export async function deployBranch(params: {
     };
 
     const deploymentId = data.id;
-    let previewUrl = data.url;
+    let previewUrl: string | null | undefined = data.url;
 
     // If deployment is not ready yet, poll for completion
     if (!previewUrl && deploymentId) {

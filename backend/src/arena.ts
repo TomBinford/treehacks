@@ -11,6 +11,11 @@ import {
   getAgentByRunId,
   type AgentStatus,
 } from "./store.js";
+import {
+  createGitHubClient,
+  monitorBranchDeployment,
+} from "./github.js";
+import type { Octokit } from "@octokit/rest";
 
 const WARP_API_KEY = process.env.WARP_API_KEY;
 const WARP_ENVIRONMENT_ID = process.env.WARP_ENVIRONMENT_ID;
@@ -22,6 +27,20 @@ const DEFAULT_AGENT_CONFIG = [{ count: 1, modelId: "claude-4-sonnet" }];
 // Debug: log env config on startup
 console.log("[arena] WARP_ENVIRONMENT_ID:", WARP_ENVIRONMENT_ID ?? "(not set)");
 console.log("[arena] WARP_API_KEY:", WARP_API_KEY ? "***" + WARP_API_KEY.slice(-4) : "(not set)");
+
+// GitHub client for monitoring deployments (initialized lazily)
+let githubClient: Octokit | null = null;
+async function getGitHubClient(): Promise<Octokit | null> {
+  if (githubClient) return githubClient;
+  try {
+    githubClient = await createGitHubClient();
+    console.log("[arena] GitHub client initialized");
+    return githubClient;
+  } catch (err) {
+    console.warn("[arena] Failed to initialize GitHub client:", err);
+    return null;
+  }
+}
 
 const MONITOR_POLL_MS = 10_000;
 const MAJORITY_THRESHOLD = 0.5;
@@ -36,7 +55,7 @@ const monitoredJobs = new Map<
 function warpStateToAgentStatus(state: RunState): AgentStatus {
   switch (state) {
     case "SUCCEEDED":
-      return "ready";
+      return "pushing"; // Warp succeeded, now waiting for push and deployment
     case "FAILED":
     case "CANCELLED":
       return "failed";
@@ -73,6 +92,8 @@ function toDetailJob(job: NonNullable<ReturnType<typeof getJob>>) {
       vercelUrl: a.vercelUrl,
       sessionLink: a.sessionLink,
       stagehandVerify: a.stagehandVerify,
+      branchName: a.branchName,
+      deploymentStatus: a.deploymentStatus,
     })),
   };
 }
@@ -80,6 +101,11 @@ function toDetailJob(job: NonNullable<ReturnType<typeof getJob>>) {
 async function monitorRuns(): Promise<void> {
   if (!WARP_API_KEY) return;
   const warp = new WarpClient(WARP_API_KEY);
+  const github = await getGitHubClient();
+
+  if (monitoredJobs.size > 0) {
+    console.log(`[arena] Monitoring ${monitoredJobs.size} job(s)...`);
+  }
 
   for (const [jobId, meta] of monitoredJobs) {
     const job = getJob(jobId);
@@ -94,33 +120,84 @@ async function monitorRuns(): Promise<void> {
         const run = await warp.getRun(runId);
         const entry = getAgentByRunId(runId);
         if (!entry) continue;
-        const { agent } = entry;
+        const { agent, job: currentJob } = entry;
 
-        const newStatus = warpStateToAgentStatus(run.state);
-        if (newStatus !== agent.status) {
+        const warpStatus = warpStateToAgentStatus(run.state);
+        let finalStatus = warpStatus;
+        let vercelUrl = agent.vercelUrl;
+        let deploymentInfo = agent.deploymentStatus;
+        const logs = [...agent.terminalLogs];
+
+        // If Warp succeeded (status = "pushing"), check GitHub deployment
+        if (warpStatus === "pushing" && github && currentJob.githubRepoOwner && currentJob.githubRepoName) {
+          console.log(`[arena] Checking GitHub deployment for ${agent.branchName} (run ${runId})`);
+          const deploymentResult = await monitorBranchDeployment(
+            github,
+            currentJob.githubRepoOwner,
+            currentJob.githubRepoName,
+            agent.branchName
+          );
+
+          // Update deployment tracking info
+          deploymentInfo = {
+            workflowRunId: deploymentResult.workflowRunId?.toString() ?? null,
+            deploymentId: deploymentResult.deploymentId?.toString() ?? null,
+            lastCheckedAt: new Date().toISOString(),
+          };
+
+          // Update status based on deployment state
+          if (deploymentResult.status === "success") {
+            console.log(`[arena] Deployment succeeded for ${agent.branchName}: ${deploymentResult.vercelUrl ?? 'no URL'}`);
+            finalStatus = "ready";
+            vercelUrl = deploymentResult.vercelUrl;
+            if (vercelUrl) {
+              logs.push(`✓ Deployed to Vercel: ${vercelUrl}`);
+            } else {
+              logs.push("✓ Deployment succeeded");
+            }
+          } else if (deploymentResult.status === "failure") {
+            console.log(`[arena] Deployment failed for ${agent.branchName}`);
+            finalStatus = "deployment_failed";
+            logs.push("✗ Deployment failed");
+          } else if (deploymentResult.status === "pending") {
+            console.log(`[arena] Deployment in progress for ${agent.branchName}`);
+            finalStatus = "deploying";
+            logs.push("⏳ Deployment in progress...");
+          } else {
+            // not_found - branch hasn't been pushed yet
+            console.log(`[arena] Branch ${agent.branchName} not found yet, waiting for push...`);
+            finalStatus = "pushing";
+            logs.push("⏳ Waiting for code to be pushed...");
+          }
+        } else if (warpStatus === "failed") {
+          finalStatus = "failed";
+          logs.push(`✗ Agent failed: ${run.status_message?.message ?? "Unknown error"}`);
+        }
+
+        // Check if status changed
+        if (finalStatus !== agent.status || vercelUrl !== agent.vercelUrl) {
           anyUpdate = true;
-          if (newStatus === "ready" || newStatus === "failed") {
+          if (finalStatus === "ready" || finalStatus === "failed" || finalStatus === "deployment_failed") {
             meta.lastFinisherAt = Date.now();
           }
         }
 
         const statusMsg = run.status_message?.message ?? `State: ${run.state}`;
-        if (newStatus === "failed") {
+        if (finalStatus === "failed") {
           console.log("[arena] Run", runId, "FAILED:", statusMsg);
-        } else if (newStatus !== agent.status) {
-          console.log("[arena] Run", runId, "status:", agent.status, "->", newStatus, statusMsg);
+        } else if (finalStatus !== agent.status) {
+          console.log("[arena] Run", runId, "status:", agent.status, "->", finalStatus);
         }
+
         updateAgent(jobId, runId, {
-          status: newStatus,
-          terminalLogs: [
-            ...agent.terminalLogs.slice(0, -1),
-            statusMsg,
-          ],
+          status: finalStatus,
+          terminalLogs: logs,
           sessionLink: run.session_link ?? agent.sessionLink,
-          vercelUrl: newStatus === "ready" ? agent.vercelUrl : agent.vercelUrl,
+          vercelUrl,
+          deploymentStatus: deploymentInfo,
           stagehandVerify:
-            newStatus === "ready"
-              ? { passed: true, reason: "Agent completed successfully" }
+            finalStatus === "ready"
+              ? { passed: true, reason: "Agent completed and deployed successfully" }
               : agent.stagehandVerify,
         });
       } catch (err) {
@@ -133,8 +210,9 @@ async function monitorRuns(): Promise<void> {
     const job2 = getJob(jobId);
     if (!job2) continue;
 
+    // Count agents that have finished (either successfully deployed or failed)
     const finished = job2.agents.filter(
-      (a) => a.status === "ready" || a.status === "failed"
+      (a) => a.status === "ready" || a.status === "failed" || a.status === "deployment_failed"
     ).length;
     const total = job2.agents.length;
     const majorityReached = finished >= Math.ceil(total * MAJORITY_THRESHOLD);
@@ -187,6 +265,7 @@ export function createJobAndSpawnAgents(params: {
 
   const runIds: string[] = [];
   const sessionLinks: (string | null)[] = [];
+  const branchNames: string[] = [];
 
   const agentConfigs = params.agentConfigs ?? DEFAULT_AGENT_CONFIG;
   const totalAgents = agentConfigs.reduce((sum, s) => sum + s.count, 0);
@@ -199,7 +278,8 @@ export function createJobAndSpawnAgents(params: {
     for (const slot of agentConfigs) {
       for (let c = 0; c < slot.count; c++) {
         agentNum++;
-        const branchName = `${jobId}-${agentNum}`;
+        const branchName = `arena-${jobId}-${agentNum}`;
+        branchNames.push(branchName);
 
         const baseConfig = {
           name: `arena-${jobId}`,
@@ -248,6 +328,7 @@ Instructions:
       ...params,
       runIds,
       sessionLinks,
+      branchNames,
     });
 
     monitoredJobs.set(job.id, {
