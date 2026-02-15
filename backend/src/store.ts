@@ -17,7 +17,8 @@ export interface Agent {
   runId: string;
   status: AgentStatus;
   terminalLogs: string[];
-  vercelUrl: string | null;
+  deploymentUrl: string | null;
+  deploymentDetailsUrl: string | null;
   sessionLink: string | null;
   stagehandVerify: { passed: boolean; reason: string } | null;
   branchName: string;  // The branch this agent is working on
@@ -69,7 +70,8 @@ export function createJob(params: {
     runId,
     status: "initializing" as AgentStatus,
     terminalLogs: ["Agent started...", "Connecting to Warp..."],
-    vercelUrl: null,
+    deploymentUrl: null,
+    deploymentDetailsUrl: null,
     sessionLink: params.sessionLinks[i] ?? null,
     stagehandVerify: null,
     branchName: params.branchNames[i],
@@ -109,7 +111,7 @@ export function updateAgent(
   jobId: string,
   runId: string,
   updates: Partial<
-    Pick<Agent, "status" | "terminalLogs" | "vercelUrl" | "sessionLink" | "stagehandVerify" | "deploymentStatus">
+    Pick<Agent, "status" | "terminalLogs" | "deploymentUrl" | "deploymentDetailsUrl" | "sessionLink" | "stagehandVerify" | "deploymentStatus">
   >
 ): void {
   const job = jobs.get(jobId);

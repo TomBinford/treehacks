@@ -1,10 +1,17 @@
+import { Vercel } from "@vercel/sdk";
+
+const VERCEL_TOKEN = process.env.VERCEL_TOKEN;
+const VERCEL_TEAM_ID = process.env.VERCEL_TEAM_ID;
+const VERCEL_TEAM_SLUG = process.env.VERCEL_TEAM_SLUG;
+
+const vercel = new Vercel({
+  bearerToken: VERCEL_TOKEN,
+});
+
 /**
  * Vercel deployment integration.
  * Triggers a preview deployment for a GitHub branch and returns the preview URL.
  */
-
-const VERCEL_TOKEN = process.env.VERCEL_TOKEN;
-const VERCEL_TEAM_ID = process.env.VERCEL_TEAM_ID;
 
 export interface DeployResult {
   url: string;
@@ -156,4 +163,13 @@ async function pollDeploymentReady(deploymentId: string): Promise<string | null>
 
   console.error("[vercel] Deployment timed out");
   return null;
+}
+
+export async function getDeploymentUrl(deploymentId: string): Promise<string | null> {
+  const result = await vercel.deployments.getDeployment({
+    idOrUrl: deploymentId,
+    withGitRepoInfo: "true",
+    slug: VERCEL_TEAM_SLUG,
+  });
+  return result?.url;
 }

@@ -16,7 +16,7 @@ import {
   monitorBranchDeployment,
   createPullRequest,
 } from "./github.js";
-import { getDeploymentPreviewUrl } from "./vercel.js";
+import { getDeploymentPreviewUrl, getDeploymentUrl } from "./vercel.js";
 import type { Octokit } from "@octokit/rest";
 
 const WARP_API_KEY = process.env.WARP_API_KEY;
@@ -91,7 +91,8 @@ function toDetailJob(job: NonNullable<ReturnType<typeof getJob>>) {
       id: a.id,
       status: a.status,
       terminalLogs: a.terminalLogs,
-      vercelUrl: a.vercelUrl,
+      deploymentUrl: a.deploymentUrl,
+      deploymentDetailsUrl: a.deploymentDetailsUrl,
       sessionLink: a.sessionLink,
       stagehandVerify: a.stagehandVerify,
       branchName: a.branchName,
@@ -127,7 +128,7 @@ async function monitorRuns(): Promise<void> {
 
         const warpStatus = warpStateToAgentStatus(run.state);
         let finalStatus = warpStatus;
-        let vercelUrl = agent.vercelUrl;
+        let vercelUrl = agent.deploymentDetailsUrl;
         let deploymentInfo = agent.deploymentStatus;
         const logs = [...agent.terminalLogs];
 
@@ -183,7 +184,7 @@ async function monitorRuns(): Promise<void> {
         }
 
         // Check if status changed
-        if (finalStatus !== agent.status || vercelUrl !== agent.vercelUrl) {
+        if (finalStatus !== agent.status || vercelUrl !== agent.deploymentDetailsUrl) {
           anyUpdate = true;
           if (finalStatus === "ready" || finalStatus === "failed" || finalStatus === "deployment_failed") {
             meta.lastFinisherAt = Date.now();
@@ -197,11 +198,21 @@ async function monitorRuns(): Promise<void> {
           console.log("[arena] Run", runId, "status:", agent.status, "->", finalStatus);
         }
 
+        // Regex to extract deployment ID from Vercel URL (e.g. https://vercel.com/org/project/deploymentId)
+        const deploymentId = vercelUrl
+          ? vercelUrl.match(/vercel\.com\/[^/]+\/[^/]+\/([^/?]+)|https?:\/\/([^/.]+)\.vercel\.app/)?.[1]
+          : null;
+        let deploymentUrl = deploymentId ? await getDeploymentUrl("dpl_" + deploymentId) : null;
+        if (deploymentUrl && !deploymentUrl?.startsWith("http")) {
+          deploymentUrl = "https://" + deploymentUrl;
+        }
+
         updateAgent(jobId, runId, {
           status: finalStatus,
           terminalLogs: logs,
           sessionLink: run.session_link ?? agent.sessionLink,
-          vercelUrl,
+          deploymentUrl: deploymentUrl,
+          deploymentDetailsUrl: vercelUrl,
           deploymentStatus: deploymentInfo,
           stagehandVerify:
             finalStatus === "ready"
@@ -224,7 +235,7 @@ async function monitorRuns(): Promise<void> {
     ).length;
     const total = job2.agents.length;
     const hasReadyWithVercel = job2.agents.some(
-      (a) => a.status === "ready" && a.vercelUrl
+      (a) => a.status === "ready" && a.deploymentDetailsUrl
     );
     const majorityReached = finished >= Math.ceil(total * MAJORITY_THRESHOLD);
     const elapsed = Date.now() - meta.startedAt;
