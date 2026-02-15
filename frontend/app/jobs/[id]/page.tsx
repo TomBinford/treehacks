@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { Github, ArrowLeft, Loader2, GitPullRequest } from 'lucide-react';
+import { Github, ArrowLeft, Loader2, GitPullRequest, ExternalLink } from 'lucide-react';
 import { AgentCard } from '@/components/arena/AgentCard';
 import { TerminalView } from '@/components/arena/TerminalView';
 import { fetchJobDetail, createPRs } from '@/lib/api';
@@ -33,7 +33,6 @@ function jobStatusToLabel(
 
 export default function ArenaPage() {
   const params = useParams();
-  const router = useRouter();
   const id = params?.id as string;
 
   const [job, setJob] = useState<JobDetail | null>(null);
@@ -76,12 +75,10 @@ export default function ArenaPage() {
     if (ids.length === 0 || !id) return;
     setIsCreating(true);
     try {
-      const { prs } = await createPRs(id, ids);
-      alert(
-        `PR${prs.length > 1 ? 's' : ''} created!\n\n${prs.map((p) => `• ${p.agentId}: ${p.htmlUrl}`).join('\n')}\n\nOpening in new tabs...`
-      );
-      prs.forEach((p) => window.open(p.htmlUrl, '_blank'));
-      router.push('/');
+      await createPRs(id, ids);
+      // Re-fetch to pick up the completed status + winner info
+      const data = await fetchJobDetail(id);
+      setJob(data);
     } catch (err) {
       console.error(err);
       alert(err instanceof Error ? err.message : 'Failed to create PRs. Please try again.');
@@ -93,6 +90,12 @@ export default function ArenaPage() {
   const agents: Agent[] = job?.agents ?? [];
   const readyAgents = agents.filter((a) => a.status === 'ready');
   const selectionMode = job?.status === 'review_needed' && readyAgents.length > 0;
+  const isCompleted = job?.status === 'completed';
+  const winnerIds = job?.winnerAgentIds ?? [];
+  const prUrls = job?.prUrls ?? {};
+  const displayedAgents = isCompleted && winnerIds.length > 0
+    ? agents.filter((a) => winnerIds.includes(a.id))
+    : agents;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200">
@@ -160,9 +163,40 @@ export default function ArenaPage() {
         <div className="lg:col-span-2 flex flex-col min-h-0">
           <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 overflow-y-auto flex-1">
             <h2 className="font-semibold text-white mb-4">
-              Candidates (Vercel Previews)
+              {isCompleted && winnerIds.length > 0
+                ? `Selected Candidate${winnerIds.length > 1 ? 's' : ''}`
+                : 'Candidates (Vercel Previews)'}
             </h2>
 
+            {/* Completed state: show PR links */}
+            {isCompleted && winnerIds.length > 0 && (
+              <div className="mb-4 p-4 rounded-lg bg-emerald-900/20 border border-emerald-800">
+                <p className="text-emerald-300 text-sm font-medium mb-3">
+                  Pull request{winnerIds.length > 1 ? 's have' : ' has'} been created for this job.
+                </p>
+                <div className="flex flex-col gap-2">
+                  {winnerIds.map((agentId) => {
+                    const url = prUrls[agentId];
+                    if (!url) return null;
+                    return (
+                      <a
+                        key={agentId}
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 py-2 px-4 rounded-lg bg-slate-800 border border-slate-700 text-white hover:border-emerald-600 hover:bg-slate-700 transition-colors w-fit"
+                      >
+                        <GitPullRequest className="w-4 h-4 text-emerald-400" />
+                        <span className="font-medium text-sm">View PR on GitHub</span>
+                        <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
+                      </a>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Selection mode for review_needed */}
             {selectionMode && (
               <div className="mb-4 p-4 rounded-lg bg-slate-800/60 border border-slate-700">
                 <p className="text-slate-300 text-sm mb-3">
@@ -199,8 +233,8 @@ export default function ArenaPage() {
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {agents.map((agent) => (
+            <div className={`grid gap-4 ${isCompleted && winnerIds.length === 1 ? 'grid-cols-1 max-w-lg' : 'grid-cols-1 md:grid-cols-2'}`}>
+              {displayedAgents.map((agent) => (
                 <AgentCard
                   key={agent.id}
                   agent={agent}

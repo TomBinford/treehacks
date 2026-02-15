@@ -9,6 +9,7 @@ import {
   updateAgent,
   updateJobStatus,
   getAgentByRunId,
+  setJobWinners,
   type AgentStatus,
 } from "./store.js";
 import {
@@ -98,6 +99,8 @@ function toDetailJob(job: NonNullable<ReturnType<typeof getJob>>) {
       modelId: a.modelId,
       deploymentStatus: a.deploymentStatus,
     })),
+    winnerAgentIds: job.winnerAgentIds ?? [],
+    prUrls: job.prUrls ?? {},
   };
 }
 
@@ -513,6 +516,11 @@ export function mountArenaRoutes(router: Router): void {
           draft: pr.draft,
         });
       }
+      const prUrlMap: Record<string, string> = {};
+      for (const r of results) {
+        prUrlMap[r.agentId] = r.htmlUrl;
+      }
+      setJobWinners(req.params.id, agentIds, prUrlMap);
       updateJobStatus(req.params.id, "completed");
       return res.json({ prs: results });
     } catch (err) {

@@ -41,6 +41,10 @@ export interface Job {
   agents: Agent[];
   githubRepoOwner?: string;
   githubRepoName?: string;
+  /** Agent IDs that were selected as winners (PRs created) */
+  winnerAgentIds?: string[];
+  /** Map of agentId -> PR HTML URL */
+  prUrls?: Record<string, string>;
 }
 
 const jobs = new Map<string, Job>();
@@ -123,6 +127,17 @@ export function updateJobStatus(jobId: string, status: JobStatus): void {
   const job = jobs.get(jobId);
   if (!job) return;
   job.status = status;
+}
+
+export function setJobWinners(
+  jobId: string,
+  winnerAgentIds: string[],
+  prUrls: Record<string, string>
+): void {
+  const job = jobs.get(jobId);
+  if (!job) return;
+  job.winnerAgentIds = winnerAgentIds;
+  job.prUrls = prUrls;
 }
 
 export function getAgentByRunId(

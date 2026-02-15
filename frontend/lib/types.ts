@@ -41,5 +41,9 @@ export interface JobDetail extends Job {
   issueTitle: string;
   issueDescription: string;
   agents: Agent[];
+  /** Agent IDs that were selected as winners (PRs created) */
+  winnerAgentIds?: string[];
+  /** Map of agentId -> PR HTML URL */
+  prUrls?: Record<string, string>;
 }
 
