@@ -3,9 +3,20 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Github, Loader2, Rocket, CheckCircle, Clock, Plus } from 'lucide-react';
+import { Github, Loader2, Rocket, CheckCircle, Clock, Plus, Trash2 } from 'lucide-react';
 import { fetchJobs, createJob } from '@/lib/api';
 import type { Job } from '@/lib/types';
+import type { AgentSlot } from '@/lib/api';
+
+const MODEL_OPTIONS: { id: string; label: string }[] = [
+  { id: 'claude-4-sonnet', label: 'Claude 4 Sonnet' },
+  { id: 'claude-opus-4-6', label: 'Claude Opus 4.6' },
+  { id: 'claude-opus-4-5', label: 'Claude Opus 4.5' },
+  { id: 'claude-sonnet-4-5', label: 'Claude Sonnet 4.5' },
+  { id: 'claude-opus-4-1', label: 'Claude Opus 4.1' },
+  { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5' },
+  { id: 'claude-sonnet-4', label: 'Claude Sonnet 4' },
+];
 
 const REPO_OPTIONS = [
   'gsonntag/treehacks-testing-repo',
@@ -59,19 +70,29 @@ export default function LobbyPage() {
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [form, setForm] = useState({ repoName: '', issueTitle: '', issueDescription: '' });
+  const [agentSlots, setAgentSlots] = useState<AgentSlot[]>([{ count: 1, modelId: 'claude-4-sonnet' }]);
+
+  const totalAgents = agentSlots.reduce((sum, s) => sum + s.count, 0);
+  const canAddSlot = agentSlots.length < 10 && totalAgents < 10;
 
   const handleCreateJob = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
+    if (totalAgents < 1 || totalAgents > 10) {
+      setFormError('Total agents must be between 1 and 10');
+      return;
+    }
     setCreating(true);
     try {
       const { arenaUrl, jobId } = await createJob({
         repoName: form.repoName.trim(),
         issueTitle: form.issueTitle.trim(),
         issueDescription: form.issueDescription.trim(),
+        agentConfigs: agentSlots,
       });
       setShowForm(false);
       setForm({ repoName: '', issueTitle: '', issueDescription: '' });
+      setAgentSlots([{ count: 1, modelId: 'claude-4-sonnet' }]);
       router.push(`/jobs/${jobId}`);
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Failed to create job');
@@ -179,6 +200,71 @@ export default function LobbyPage() {
                 className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:border-violet-500 resize-none"
                 required
               />
+            </div>
+            <div>
+              <label className="block text-sm text-slate-400 mb-2">Agents ({totalAgents}/10)</label>
+              <div className="space-y-2">
+                {agentSlots.map((slot, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={1}
+                      max={10}
+                      value={slot.count}
+                      onChange={(e) => {
+                        const v = Math.max(1, Math.min(10, parseInt(e.target.value, 10) || 1));
+                        setAgentSlots((s) => {
+                          const next = [...s];
+                          next[idx] = { ...next[idx], count: v };
+                          return next;
+                        });
+                      }}
+                      className="w-14 px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white text-sm focus:outline-none focus:border-violet-500 text-center"
+                    />
+                    <span className="text-slate-500 text-sm">×</span>
+                    <select
+                      value={slot.modelId}
+                      onChange={(e) =>
+                        setAgentSlots((s) => {
+                          const next = [...s];
+                          next[idx] = { ...next[idx], modelId: e.target.value };
+                          return next;
+                        })
+                      }
+                      className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white focus:outline-none focus:border-violet-500"
+                    >
+                      {MODEL_OPTIONS.map((m) => (
+                        <option key={m.id} value={m.id} className="bg-slate-800">
+                          {m.label}
+                        </option>
+                      ))}
+                    </select>
+                    {agentSlots.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => setAgentSlots((s) => s.filter((_, i) => i !== idx))}
+                        className="p-2 text-slate-500 hover:text-red-400 rounded"
+                        aria-label="Remove"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+                {canAddSlot && (
+                  <button
+                    type="button"
+                    onClick={() => setAgentSlots((s) => [...s, { count: 1, modelId: 'claude-4-sonnet' }])}
+                    className="text-sm text-violet-400 hover:text-violet-300 flex items-center gap-1"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add agent slot
+                  </button>
+                )}
+              </div>
+              <p className="text-slate-500 text-xs mt-1">
+                Same model: one slot. Different models: add multiple slots.
+              </p>
             </div>
             {formError && (
               <p className="text-red-400 text-sm">{formError}</p>

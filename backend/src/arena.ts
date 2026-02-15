@@ -15,7 +15,9 @@ import {
 const WARP_API_KEY = process.env.WARP_API_KEY;
 const WARP_ENVIRONMENT_ID = process.env.WARP_ENVIRONMENT_ID;
 const ARENA_UI_URL = process.env.ARENA_UI_URL ?? "http://localhost:3000";
-const NUM_AGENTS = parseInt(process.env.NUM_AGENTS ?? "1", 10);
+
+/** Default agent config when not specified (e.g. GitHub trigger) */
+const DEFAULT_AGENT_CONFIG = [{ count: 1, modelId: "claude-4-sonnet" }];
 
 // Debug: log env config on startup
 console.log("[arena] WARP_ENVIRONMENT_ID:", WARP_ENVIRONMENT_ID ?? "(not set)");
@@ -158,6 +160,11 @@ async function monitorRuns(): Promise<void> {
 setInterval(monitorRuns, MONITOR_POLL_MS);
 setTimeout(monitorRuns, 2000);
 
+export interface AgentSlot {
+  count: number;
+  modelId: string;
+}
+
 export function createJobAndSpawnAgents(params: {
   issueId: number;
   repoName: string;
@@ -165,6 +172,7 @@ export function createJobAndSpawnAgents(params: {
   issueDescription: string;
   githubRepoOwner?: string;
   githubRepoName?: string;
+  agentConfigs?: AgentSlot[];
 }): Promise<{
   jobId: string;
   arenaUrl: string;
@@ -180,25 +188,30 @@ export function createJobAndSpawnAgents(params: {
   const runIds: string[] = [];
   const sessionLinks: (string | null)[] = [];
 
-  const baseConfig = {
-    name: `arena-${jobId}`,
-    model_id: "claude-4-sonnet" as const,
-    ...(WARP_ENVIRONMENT_ID && { environment_id: WARP_ENVIRONMENT_ID }),
-  };
+  const agentConfigs = params.agentConfigs ?? DEFAULT_AGENT_CONFIG;
+  const totalAgents = agentConfigs.reduce((sum, s) => sum + s.count, 0);
 
-  console.log("[arena] Creating job", jobId, "with config:", JSON.stringify(baseConfig, null, 2));
+  console.log("[arena] Creating job", jobId, "agentConfigs:", JSON.stringify(agentConfigs));
   console.log("[arena] WARP_ENVIRONMENT_ID being used:", WARP_ENVIRONMENT_ID ?? "(none - running without environment)");
 
   return (async () => {
-    for (let i = 0; i < NUM_AGENTS; i++) {
-      const agentNum = i + 1;
-      const branchName = `${jobId}-${agentNum}`;
+    let agentNum = 0;
+    for (const slot of agentConfigs) {
+      for (let c = 0; c < slot.count; c++) {
+        agentNum++;
+        const branchName = `${jobId}-${agentNum}`;
 
-      const repoContext = WARP_ENVIRONMENT_ID
-        ? `\n\nThe repository (${params.repoName}) has been cloned and is available in your workspace. You can immediately explore the files and start coding—no need to clone or set up the repo.`
-        : `\n\nRepository: ${params.repoName}`;
+        const baseConfig = {
+          name: `arena-${jobId}`,
+          model_id: slot.modelId,
+          ...(WARP_ENVIRONMENT_ID && { environment_id: WARP_ENVIRONMENT_ID }),
+        };
 
-      const prompt = `Repository: ${params.repoName}
+        const repoContext = WARP_ENVIRONMENT_ID
+          ? `\n\nThe repository (${params.repoName}) has been cloned and is available in your workspace. You can immediately explore the files and start coding—no need to clone or set up the repo.`
+          : `\n\nRepository: ${params.repoName}`;
+
+        const prompt = `Repository: ${params.repoName}
 
 GitHub Issue: ${params.issueTitle}
 
@@ -211,20 +224,21 @@ Instructions:
 - Implement the fix
 - Deploy a preview`;
 
-      console.log("[arena] Spawning agent", agentNum, "/", NUM_AGENTS);
-      const { run_id, state } = await warp.runAgent(prompt, {
-        title: `Arena: ${params.issueTitle} (Agent ${agentNum}/${NUM_AGENTS})`,
-        config: baseConfig,
-      });
-      console.log("[arena] Agent spawned run_id:", run_id, "state:", state);
-      runIds.push(run_id);
-      try {
-        const run = await warp.getRun(run_id);
-        console.log("[arena] Run", run_id, "session_link:", run.session_link ?? "(none)", "status_message:", run.status_message?.message ?? "(none)");
-        sessionLinks.push(run.session_link ?? null);
-      } catch (err) {
-        console.warn("[arena] Failed to fetch run", run_id, ":", err);
-        sessionLinks.push(null);
+        console.log("[arena] Spawning agent", agentNum, "/", totalAgents, "model:", slot.modelId);
+        const { run_id, state } = await warp.runAgent(prompt, {
+          title: `Arena: ${params.issueTitle} (Agent ${agentNum}/${totalAgents})`,
+          config: baseConfig,
+        });
+        console.log("[arena] Agent spawned run_id:", run_id, "state:", state);
+        runIds.push(run_id);
+        try {
+          const run = await warp.getRun(run_id);
+          console.log("[arena] Run", run_id, "session_link:", run.session_link ?? "(none)", "status_message:", run.status_message?.message ?? "(none)");
+          sessionLinks.push(run.session_link ?? null);
+        } catch (err) {
+          console.warn("[arena] Failed to fetch run", run_id, ":", err);
+          sessionLinks.push(null);
+        }
       }
     }
 
@@ -260,6 +274,7 @@ export function mountArenaRoutes(router: Router): void {
       issueDescription,
       githubRepoOwner,
       githubRepoName,
+      agentConfigs,
     } = req.body;
 
     if (!repoName || !issueTitle || !issueDescription) {
@@ -282,8 +297,22 @@ export function mountArenaRoutes(router: Router): void {
       });
     }
 
+    let validatedConfigs: AgentSlot[] | undefined;
+    if (agentConfigs && Array.isArray(agentConfigs) && agentConfigs.length > 0) {
+      const total = agentConfigs.reduce((sum: number, s: { count?: number }) => sum + Math.max(1, Math.min(10, parseInt(String(s.count ?? 1), 10) || 1)), 0);
+      if (total < 1 || total > 10) {
+        return res.status(400).json({
+          error: "Total agents must be between 1 and 10",
+        });
+      }
+      validatedConfigs = agentConfigs.map((s: { count?: number; modelId?: string }) => ({
+        count: Math.max(1, Math.min(10, parseInt(String(s.count ?? 1), 10) || 1)),
+        modelId: typeof s.modelId === "string" && s.modelId ? s.modelId : "claude-4-sonnet",
+      }));
+    }
+
     try {
-      console.log("[arena] POST /jobs", { repoName, issueTitle });
+      console.log("[arena] POST /jobs", { repoName, issueTitle, agentConfigs: validatedConfigs });
       const data = await createJobAndSpawnAgents({
         issueId,
         repoName,
@@ -291,6 +320,7 @@ export function mountArenaRoutes(router: Router): void {
         issueDescription,
         githubRepoOwner: owner,
         githubRepoName: repo,
+        agentConfigs: validatedConfigs,
       });
       console.log("[arena] Job created:", data.jobId, "arenaUrl:", data.arenaUrl);
       return res.status(201).json(data);
