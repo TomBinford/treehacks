@@ -29,7 +29,8 @@ export interface Agent {
   id: string;
   status: AgentStatus;
   terminalLogs: string[];
-  vercelUrl: string | null;
+  deploymentUrl: string | null;
+  deploymentDetailsUrl: string | null;
   /** Link to watch the agent session in Warp (when vercelUrl not yet available) */
   sessionLink?: string | null;
   stagehandVerify: StagehandVerify | null;

@@ -204,10 +204,6 @@ export default function ArenaPage() {
                 <AgentCard
                   key={agent.id}
                   agent={agent}
-                  onPreview={() => {
-                    const url = agent.vercelUrl ?? agent.sessionLink;
-                    if (url) window.open(url);
-                  }}
                   selectionMode={selectionMode}
                   selected={selectedAgentIds.has(agent.id)}
                   onToggleSelect={() => toggleAgentSelection(agent.id)}

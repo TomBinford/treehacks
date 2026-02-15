@@ -28,13 +28,11 @@ const STATUS_LABELS: Record<Agent['status'], string> = {
 
 export function AgentCard({
   agent,
-  onPreview,
   selectionMode,
   selected,
   onToggleSelect,
 }: {
   agent: Agent;
-  onPreview?: () => void;
   selectionMode?: boolean;
   selected?: boolean;
   onToggleSelect?: () => void;
@@ -62,11 +60,10 @@ export function AgentCard({
               className="sr-only"
             />
             <span
-              className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
-                selected
-                  ? 'bg-violet-500 border-violet-500'
-                  : 'border-slate-500 bg-transparent'
-              }`}
+              className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${selected
+                ? 'bg-violet-500 border-violet-500'
+                : 'border-slate-500 bg-transparent'
+                }`}
             >
               {selected && (
                 <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />
@@ -114,16 +111,16 @@ export function AgentCard({
       <div className="aspect-video bg-slate-950 rounded-lg border border-slate-800 mb-4 flex items-center justify-center relative overflow-hidden min-h-[120px]">
         {agent.sessionLink ? (
           <>
-            {isReady && agent.vercelUrl ? (
+            {isReady && agent.deploymentDetailsUrl ? (
               <>
                 <iframe
-                  src={agent.vercelUrl}
+                  src={agent.deploymentDetailsUrl}
                   className="w-[200%] h-[200%] scale-50 origin-top-left pointer-events-none"
                   title={`Preview ${formatAgentName(agent.id)}`}
                   sandbox="allow-scripts"
                 />
                 <a
-                  href={agent.vercelUrl}
+                  href={agent.deploymentUrl!}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 hover:bg-black/60 transition-all"
@@ -165,9 +162,9 @@ export function AgentCard({
 
       {/* Actions - Vercel as main, Warp as secondary when ready */}
       <div className="flex items-center gap-2">
-        {isReady && agent.vercelUrl && (
+        {isReady && agent.deploymentDetailsUrl && (
           <a
-            href={agent.vercelUrl}
+            href={agent.deploymentDetailsUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="flex-1 py-2 px-3 text-center text-sm font-medium rounded-lg bg-violet-600 text-white hover:bg-violet-500 transition-colors"
