@@ -110,13 +110,12 @@ export default function ArenaPage() {
             </div>
           </div>
           <span
-            className={`shrink-0 px-3 py-1.5 rounded-full text-sm font-medium border flex items-center gap-2 ${
-              job?.status === 'processing'
-                ? 'bg-amber-900/30 text-amber-400 border-amber-800'
-                : job?.status === 'review_needed'
-                  ? 'bg-emerald-900/30 text-emerald-400 border-emerald-800'
-                  : 'bg-slate-800 text-slate-400 border-slate-700'
-            }`}
+            className={`shrink-0 px-3 py-1.5 rounded-full text-sm font-medium border flex items-center gap-2 ${job?.status === 'processing'
+              ? 'bg-amber-900/30 text-amber-400 border-amber-800'
+              : job?.status === 'review_needed'
+                ? 'bg-emerald-900/30 text-emerald-400 border-emerald-800'
+                : 'bg-slate-800 text-slate-400 border-slate-700'
+              }`}
           >
             {job?.status === 'processing' && (
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -140,10 +139,7 @@ export default function ArenaPage() {
           {/* Live Terminal Feed */}
           <div className="flex-1 min-h-0 flex flex-col rounded-xl border border-slate-800 bg-slate-900 overflow-hidden">
             <div className="p-4 border-b border-slate-800 bg-slate-900/50 shrink-0">
-              <h2 className="font-semibold text-white">Live Agent Logs</h2>
-              <p className="text-xs text-slate-500">
-                Streaming from Warp instances...
-              </p>
+              <h2 className="font-semibold text-white">Arena Logs</h2>
             </div>
             <div className="flex-1 min-h-0 overflow-hidden">
               <TerminalView agents={agents} />

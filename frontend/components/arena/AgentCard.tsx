@@ -33,10 +33,9 @@ export function AgentCard({
     <div
       className={`
         relative group rounded-xl border p-4 transition-all
-        ${
-          isReady
-            ? 'border-slate-700 bg-slate-800/40 hover:border-violet-500/50'
-            : 'border-slate-800 bg-slate-900/50 opacity-80'
+        ${isReady
+          ? 'border-slate-700 bg-slate-800/40 hover:border-violet-500/50'
+          : 'border-slate-800 bg-slate-900/50 opacity-80'
         }
       `}
     >
@@ -47,13 +46,12 @@ export function AgentCard({
             {formatAgentName(agent.id)}
           </h3>
           <span
-            className={`text-xs uppercase tracking-wider font-bold ${
-              isReady
+            className={`text-xs uppercase tracking-wider font-bold ${isReady
               ? 'text-emerald-400'
               : agent.status === 'failed' || agent.status === 'deployment_failed'
                 ? 'text-red-400'
                 : 'text-amber-400'
-            }`}
+              }`}
           >
             {STATUS_LABELS[agent.status]}
           </span>
@@ -64,8 +62,8 @@ export function AgentCard({
           agent.status === 'developing' ||
           agent.status === 'pushing' ||
           agent.status === 'deploying') && (
-          <Loader2 className="w-5 h-5 text-amber-400 animate-spin shrink-0" />
-        )}
+            <Loader2 className="w-5 h-5 text-amber-400 animate-spin shrink-0" />
+          )}
         {agent.status === 'ready' && (
           <Check className="w-5 h-5 text-emerald-400 shrink-0" />
         )}
@@ -93,7 +91,7 @@ export function AgentCard({
                   className="absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 hover:bg-black/60 transition-all"
                 >
                   <span className="flex items-center gap-2 text-white font-bold bg-black/80 px-4 py-2 rounded-full">
-                    View Preview <ExternalLink className="w-4 h-4" />
+                    Open Deployment <ExternalLink className="w-4 h-4" />
                   </span>
                 </a>
               </>
@@ -128,7 +126,7 @@ export function AgentCard({
       </div>
 
       {/* Actions - Vercel as main, Warp as secondary when ready */}
-      <div className="flex gap-2">
+      <div className="flex items-center gap-2">
         {isReady && agent.vercelUrl && (
           <a
             href={agent.vercelUrl}
@@ -136,7 +134,7 @@ export function AgentCard({
             rel="noopener noreferrer"
             className="flex-1 py-2 px-3 text-center text-sm font-medium rounded-lg bg-violet-600 text-white hover:bg-violet-500 transition-colors"
           >
-            View Vercel
+            Deployment details
           </a>
         )}
         {agent.sessionLink && (
@@ -146,13 +144,13 @@ export function AgentCard({
             rel="noopener noreferrer"
             className="flex-1 py-2 px-3 text-center text-sm font-medium rounded-lg border border-slate-600 text-slate-300 hover:border-slate-500 hover:text-white transition-colors"
           >
-            View Warp
+            Warp <br /> session
           </a>
         )}
         <button
           onClick={onSelect}
           disabled={!isReady}
-          className="flex-1 py-2 bg-white text-black font-bold rounded-lg hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
+          className="flex-1 py-2 px-3 bg-white text-black font-bold rounded-lg hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
         >
           Select as Winner
         </button>
