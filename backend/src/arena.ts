@@ -192,7 +192,7 @@ export function createJobAndSpawnAgents(params: {
   return (async () => {
     for (let i = 0; i < NUM_AGENTS; i++) {
       const agentNum = i + 1;
-      const branchName = `${jobId}-${agentNum}`;
+      const branchName = `arena-${jobId}-${agentNum}`;
 
       const repoContext = WARP_ENVIRONMENT_ID
         ? `\n\nThe repository (${params.repoName}) has been cloned and is available in your workspace. You can immediately explore the files and start coding—no need to clone or set up the repo.`
