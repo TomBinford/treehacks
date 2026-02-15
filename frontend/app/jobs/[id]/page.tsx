@@ -3,11 +3,10 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Github, Clock, ArrowLeft, Loader2 } from 'lucide-react';
+import { Github, ArrowLeft, Loader2, GitPullRequest } from 'lucide-react';
 import { AgentCard } from '@/components/arena/AgentCard';
 import { TerminalView } from '@/components/arena/TerminalView';
-import { WinnerModal } from '@/components/arena/WinnerModal';
-import { fetchJobDetail, selectWinner } from '@/lib/api';
+import { fetchJobDetail, createPRs } from '@/lib/api';
 import type { JobDetail, Agent } from '@/lib/types';
 
 function jobStatusToLabel(
@@ -38,8 +37,8 @@ export default function ArenaPage() {
   const id = params?.id as string;
 
   const [job, setJob] = useState<JobDetail | null>(null);
-  const [winnerModalAgent, setWinnerModalAgent] = useState<string | null>(null);
-  const [isSelecting, setIsSelecting] = useState(false);
+  const [selectedAgentIds, setSelectedAgentIds] = useState<Set<string>>(new Set());
+  const [isCreating, setIsCreating] = useState(false);
 
   // Poll backend for status
   useEffect(() => {
@@ -63,27 +62,37 @@ export default function ArenaPage() {
     };
   }, [id]);
 
-  const handleSelectWinner = (agentId: string) => {
-    setWinnerModalAgent(agentId);
+  const toggleAgentSelection = (agentId: string) => {
+    setSelectedAgentIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(agentId)) next.delete(agentId);
+      else next.add(agentId);
+      return next;
+    });
   };
 
-  const handleConfirmWinner = async () => {
-    if (!winnerModalAgent || !id) return;
-    setIsSelecting(true);
+  const handleCreatePRs = async () => {
+    const ids = Array.from(selectedAgentIds);
+    if (ids.length === 0 || !id) return;
+    setIsCreating(true);
     try {
-      await selectWinner(id, { winnerAgentId: winnerModalAgent });
-      setWinnerModalAgent(null);
+      const { prs } = await createPRs(id, ids);
+      alert(
+        `PR${prs.length > 1 ? 's' : ''} created!\n\n${prs.map((p) => `• ${p.agentId}: ${p.htmlUrl}`).join('\n')}\n\nOpening in new tabs...`
+      );
+      prs.forEach((p) => window.open(p.htmlUrl, '_blank'));
       router.push('/');
     } catch (err) {
       console.error(err);
-      alert('Failed to select winner. Please try again.');
+      alert(err instanceof Error ? err.message : 'Failed to create PRs. Please try again.');
     } finally {
-      setIsSelecting(false);
+      setIsCreating(false);
     }
   };
 
   const agents: Agent[] = job?.agents ?? [];
-  const readyCount = agents.filter((a) => a.status === 'ready').length;
+  const readyAgents = agents.filter((a) => a.status === 'ready');
+  const selectionMode = job?.status === 'review_needed' && readyAgents.length > 0;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200">
@@ -105,7 +114,7 @@ export default function ArenaPage() {
               </h1>
               <p className="text-slate-400 text-sm mt-0.5">
                 Arena Active • {agents.length} Warp Agents
-                {readyCount > 0 && ` • ${readyCount} ready for review`}
+                {readyAgents.length > 0 && ` • ${readyAgents.length} ready for review`}
               </p>
             </div>
           </div>
@@ -154,6 +163,42 @@ export default function ArenaPage() {
               Candidates (Vercel Previews)
             </h2>
 
+            {selectionMode && (
+              <div className="mb-4 p-4 rounded-lg bg-slate-800/60 border border-slate-700">
+                <p className="text-slate-300 text-sm mb-3">
+                  Select one or more preferred options below. This will create pull requests so you can review the code on GitHub. If you select a single option, a regular PR will be created. If you select multiple, draft PRs will be created (since only one will go to production in the end).
+                </p>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleCreatePRs}
+                    disabled={selectedAgentIds.size === 0 || isCreating}
+                    className="flex items-center gap-2 py-2.5 px-4 rounded-lg bg-emerald-600 text-white font-bold hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {isCreating ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Creating PRs...
+                      </>
+                    ) : (
+                      <>
+                        <GitPullRequest className="w-4 h-4" />
+                        Create PR{selectedAgentIds.size !== 1 ? 's' : ''} ({selectedAgentIds.size} selected)
+                      </>
+                    )}
+                  </button>
+                  {selectedAgentIds.size > 0 && (
+                    <button
+                      onClick={() => setSelectedAgentIds(new Set())}
+                      disabled={isCreating}
+                      className="text-slate-400 hover:text-white text-sm"
+                    >
+                      Clear selection
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {agents.map((agent) => (
                 <AgentCard
@@ -163,7 +208,9 @@ export default function ArenaPage() {
                     const url = agent.vercelUrl ?? agent.sessionLink;
                     if (url) window.open(url);
                   }}
-                  onSelect={() => handleSelectWinner(agent.id)}
+                  selectionMode={selectionMode}
+                  selected={selectedAgentIds.has(agent.id)}
+                  onToggleSelect={() => toggleAgentSelection(agent.id)}
                 />
               ))}
             </div>
@@ -176,16 +223,6 @@ export default function ArenaPage() {
           </div>
         </div>
       </div>
-
-      {/* Winner Confirmation Modal */}
-      {winnerModalAgent && (
-        <WinnerModal
-          agentId={winnerModalAgent}
-          onConfirm={handleConfirmWinner}
-          onCancel={() => setWinnerModalAgent(null)}
-          isLoading={isSelecting}
-        />
-      )}
     </div>
   );
 }

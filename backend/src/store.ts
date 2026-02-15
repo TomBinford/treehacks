@@ -21,6 +21,8 @@ export interface Agent {
   sessionLink: string | null;
   stagehandVerify: { passed: boolean; reason: string } | null;
   branchName: string;  // The branch this agent is working on
+  modelId?: string;   // Model used to generate this agent
+
   deploymentStatus: {
     workflowRunId: string | null;
     deploymentId: string | null;
@@ -57,6 +59,7 @@ export function createJob(params: {
   runIds: string[];
   sessionLinks: (string | null)[];
   branchNames: string[];
+  modelIds?: string[];
   githubRepoOwner?: string;
   githubRepoName?: string;
 }): Job {
@@ -70,6 +73,7 @@ export function createJob(params: {
     sessionLink: params.sessionLinks[i] ?? null,
     stagehandVerify: null,
     branchName: params.branchNames[i],
+    modelId: params.modelIds?.[i],
     deploymentStatus: null,
   }));
 

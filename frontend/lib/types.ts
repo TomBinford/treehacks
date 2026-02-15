@@ -33,6 +33,8 @@ export interface Agent {
   /** Link to watch the agent session in Warp (when vercelUrl not yet available) */
   sessionLink?: string | null;
   stagehandVerify: StagehandVerify | null;
+  /** Model used to generate this agent (e.g. claude-4-sonnet) */
+  modelId?: string | null;
 }
 
 export interface JobDetail extends Job {
@@ -41,6 +43,3 @@ export interface JobDetail extends Job {
   agents: Agent[];
 }
 
-export interface SelectWinnerRequest {
-  winnerAgentId: string;
-}

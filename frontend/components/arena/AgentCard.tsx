@@ -8,6 +8,14 @@ function formatAgentName(id: string): string {
   return match ? match[1].charAt(0).toUpperCase() + match[1].slice(1) : id;
 }
 
+function formatModelId(modelId: string | null | undefined): string {
+  if (!modelId) return '';
+  return modelId
+    .split('-')
+    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+    .join(' ');
+}
+
 const STATUS_LABELS: Record<Agent['status'], string> = {
   initializing: 'Initializing environment',
   developing: 'Developing',
@@ -21,11 +29,15 @@ const STATUS_LABELS: Record<Agent['status'], string> = {
 export function AgentCard({
   agent,
   onPreview,
-  onSelect,
+  selectionMode,
+  selected,
+  onToggleSelect,
 }: {
   agent: Agent;
   onPreview?: () => void;
-  onSelect: () => void;
+  selectionMode?: boolean;
+  selected?: boolean;
+  onToggleSelect?: () => void;
 }) {
   const isReady = agent.status === 'ready';
 
@@ -40,11 +52,37 @@ export function AgentCard({
       `}
     >
       {/* Header */}
-      <div className="flex justify-between items-start mb-3">
-        <div>
+      <div className="flex justify-between items-start mb-3 gap-3">
+        {selectionMode && isReady && onToggleSelect && (
+          <label className="shrink-0 cursor-pointer flex items-center justify-center w-8 h-8 rounded-lg border border-slate-600 hover:border-violet-500/50 transition-colors mt-0.5">
+            <input
+              type="checkbox"
+              checked={selected ?? false}
+              onChange={onToggleSelect}
+              className="sr-only"
+            />
+            <span
+              className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
+                selected
+                  ? 'bg-violet-500 border-violet-500'
+                  : 'border-slate-500 bg-transparent'
+              }`}
+            >
+              {selected && (
+                <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />
+              )}
+            </span>
+          </label>
+        )}
+        <div className="min-w-0 flex-1">
           <h3 className="font-semibold text-slate-200">
             {formatAgentName(agent.id)}
           </h3>
+          {agent.modelId && (
+            <p className="text-xs text-slate-500 mt-0.5">
+              {formatModelId(agent.modelId)}
+            </p>
+          )}
           <span
             className={`text-xs uppercase tracking-wider font-bold ${isReady
               ? 'text-emerald-400'
@@ -134,7 +172,7 @@ export function AgentCard({
             rel="noopener noreferrer"
             className="flex-1 py-2 px-3 text-center text-sm font-medium rounded-lg bg-violet-600 text-white hover:bg-violet-500 transition-colors"
           >
-            Deployment details
+            View Vercel Page
           </a>
         )}
         {agent.sessionLink && (
@@ -144,16 +182,9 @@ export function AgentCard({
             rel="noopener noreferrer"
             className="flex-1 py-2 px-3 text-center text-sm font-medium rounded-lg border border-slate-600 text-slate-300 hover:border-slate-500 hover:text-white transition-colors"
           >
-            Warp <br /> session
+            View Warp Session
           </a>
         )}
-        <button
-          onClick={onSelect}
-          disabled={!isReady}
-          className="flex-1 py-2 px-3 bg-white text-black font-bold rounded-lg hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
-        >
-          Select as Winner
-        </button>
       </div>
     </div>
   );

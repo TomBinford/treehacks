@@ -13,6 +13,50 @@ export interface PRInfo {
   number: number;
 }
 
+export interface CreatePRResult {
+  htmlUrl: string;
+  number: number;
+  draft: boolean;
+}
+
+/**
+ * Create a pull request for a branch.
+ * Uses the GitHub App client (createGitHubClient) for authentication.
+ */
+export async function createPullRequest(
+  octokit: Octokit,
+  params: {
+    owner: string;
+    repo: string;
+    head: string;
+    title: string;
+    body?: string;
+    draft?: boolean;
+  }
+): Promise<CreatePRResult> {
+  const { owner, repo, head, title, body, draft = false } = params;
+
+  // Get default branch (usually "main")
+  const { data: repoData } = await octokit.repos.get({ owner, repo });
+  const base = repoData.default_branch ?? "main";
+
+  const { data: pr } = await octokit.pulls.create({
+    owner,
+    repo,
+    head,
+    base,
+    title,
+    body: body ?? "",
+    draft,
+  });
+
+  return {
+    htmlUrl: pr.html_url ?? "",
+    number: pr.number ?? 0,
+    draft: pr.draft ?? false,
+  };
+}
+
 /**
  * Find an open PR for the given branch.
  * Returns the PR info if found, null otherwise.

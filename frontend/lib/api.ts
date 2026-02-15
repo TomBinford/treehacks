@@ -1,4 +1,4 @@
-import type { Job, JobDetail, SelectWinnerRequest } from './types';
+import type { Job, JobDetail } from './types';
 
 const API_BASE = '/api';
 
@@ -52,16 +52,22 @@ export async function createJob(payload: CreateJobRequest): Promise<{ jobId: str
   return data;
 }
 
-export async function selectWinner(
+export interface CreatePRsResponse {
+  prs: Array<{ agentId: string; htmlUrl: string; number: number; draft: boolean }>;
+}
+
+export async function createPRs(
   jobId: string,
-  payload: SelectWinnerRequest
-): Promise<void> {
-  const res = await fetch(`${API_BASE}/jobs/${jobId}/select`, {
+  agentIds: string[]
+): Promise<CreatePRsResponse> {
+  const res = await fetch(`${API_BASE}/jobs/${jobId}/create-prs`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ agentIds }),
   });
   if (!res.ok) {
-    throw new Error(`Failed to select winner: ${res.statusText}`);
+    const err = await res.text();
+    throw new Error(err || `Failed to create PRs: ${res.statusText}`);
   }
+  return res.json() as Promise<CreatePRsResponse>;
 }
