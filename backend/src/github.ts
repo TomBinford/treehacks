@@ -70,6 +70,10 @@ export async function createGitHubClient(installationId?: number): Promise<Octok
   });
 }
 
+export interface WorkflowRunWithSha extends WorkflowRun {
+  head_sha: string | null;
+}
+
 /**
  * Get the latest workflow runs for a specific branch
  */
@@ -78,7 +82,7 @@ export async function getWorkflowRunsForBranch(
   owner: string,
   repo: string,
   branch: string
-): Promise<WorkflowRun[]> {
+): Promise<WorkflowRunWithSha[]> {
   try {
     const { data } = await octokit.actions.listWorkflowRunsForRepo({
       owner,
@@ -86,11 +90,12 @@ export async function getWorkflowRunsForBranch(
       branch,
       per_page: 10,
     });
-    return data.workflow_runs.map((run) => ({
+    return data.workflow_runs.map((run: { id: number; status: string | null; conclusion: string | null; html_url: string; head_sha?: string | null }) => ({
       id: run.id,
       status: run.status,
       conclusion: run.conclusion,
       html_url: run.html_url,
+      head_sha: run.head_sha ?? null,
     }));
   } catch (err) {
     console.error(`[github] Failed to get workflow runs for ${owner}/${repo}@${branch}:`, err);
@@ -99,22 +104,22 @@ export async function getWorkflowRunsForBranch(
 }
 
 /**
- * Get deployments for a specific branch
+ * Get deployments for a specific ref (branch name or commit SHA)
  */
-export async function getDeploymentsForBranch(
+export async function getDeploymentsForRef(
   octokit: Octokit,
   owner: string,
   repo: string,
-  branch: string
+  ref: string
 ): Promise<Deployment[]> {
   try {
     const { data } = await octokit.repos.listDeployments({
       owner,
       repo,
-      ref: branch,
+      ref,
       per_page: 10,
     });
-    return data.map((deployment) => ({
+    return data.map((deployment: { id: number; environment: string; payload?: unknown; statuses_url: string }) => ({
       id: deployment.id,
       environment: deployment.environment,
       state: (typeof deployment.payload === 'object' && deployment.payload !== null && 'state' in deployment.payload)
@@ -123,14 +128,28 @@ export async function getDeploymentsForBranch(
       statuses_url: deployment.statuses_url,
     }));
   } catch (err) {
-    console.error(`[github] Failed to get deployments for ${owner}/${repo}@${branch}:`, err);
+    console.error(`[github] Failed to get deployments for ${owner}/${repo}@${ref}:`, err);
     return [];
   }
+}
+
+/** @deprecated Use getDeploymentsForRef */
+export async function getDeploymentsForBranch(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  branch: string
+): Promise<Deployment[]> {
+  return getDeploymentsForRef(octokit, owner, repo, branch);
 }
 
 /**
  * Get the latest deployment status for a deployment
  * This is where we extract the Vercel preview URL
+ *
+ * IMPORTANT: listDeploymentStatuses returns statuses in creation order (oldest first).
+ * With per_page: 1 we'd get the initial "pending" status and never see "success".
+ * We fetch multiple and pick the most recent by created_at.
  */
 export async function getDeploymentStatus(
   octokit: Octokit,
@@ -143,15 +162,19 @@ export async function getDeploymentStatus(
       owner,
       repo,
       deployment_id: deploymentId,
-      per_page: 1,
+      per_page: 10,
     });
     if (data.length === 0) return null;
 
-    const status = data[0];
+    // Pick the most recent status by created_at (API returns oldest-first)
+    const statuses = data as Array<{ state: string; environment_url?: string | null; log_url?: string | null; created_at?: string }>;
+    const latest = statuses.reduce((a, b) =>
+      (b.created_at ?? "") > (a.created_at ?? "") ? b : a
+    );
     return {
-      state: status.state,
-      environment_url: status.environment_url ?? null,
-      log_url: status.log_url ?? null,
+      state: latest.state,
+      environment_url: latest.environment_url ?? null,
+      log_url: latest.log_url ?? null,
     };
   } catch (err) {
     console.error(`[github] Failed to get deployment status for deployment ${deploymentId}:`, err);
@@ -181,8 +204,37 @@ export async function branchExists(
 }
 
 /**
+ * Try to extract a Vercel preview URL from commit statuses (e.g. Vercel adds a status with target_url)
+ */
+async function getVercelUrlFromCommitStatus(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  ref: string
+): Promise<string | null> {
+  try {
+    const { data } = await octokit.repos.getCombinedStatusForRef({
+      owner,
+      repo,
+      ref,
+    });
+    // Look for Vercel-related status (common patterns: "Vercel", "Preview", vercel.app URLs)
+    for (const status of data.statuses) {
+      const ctx = (status.context ?? "").toLowerCase();
+      const url = status.target_url;
+      if (url && (ctx.includes("vercel") || ctx.includes("preview") || (url.includes("vercel.app") || url.includes("vercel.sh")))) {
+        return url;
+      }
+    }
+  } catch {
+    // Ignore - commit statuses are optional
+  }
+  return null;
+}
+
+/**
  * Monitor a branch for deployment status and extract the Vercel URL
- * Returns the deployment URL if found, null otherwise
+ * Supports both GitHub Deployments API and workflow completion fallback (for setups that don't create deployments)
  */
 export async function monitorBranchDeployment(
   octokit: Octokit,
@@ -214,14 +266,20 @@ export async function monitorBranchDeployment(
     console.log(`[github] Workflow run #${latestRun.id} for ${branch}: status=${latestRun.status}, conclusion=${latestRun.conclusion ?? 'none'}`);
   }
 
-  // Get deployments to extract the Vercel URL
-  const deployments = await getDeploymentsForBranch(octokit, owner, repo, branch);
+  // Get deployments - try branch ref first, then SHA (Vercel often creates deployments with commit SHA)
+  let deployments = await getDeploymentsForRef(octokit, owner, repo, branch);
+  if (deployments.length === 0 && latestRun?.head_sha) {
+    deployments = await getDeploymentsForRef(octokit, owner, repo, latestRun.head_sha);
+    if (deployments.length > 0) {
+      console.log(`[github] Found ${deployments.length} deployment(s) for SHA ${latestRun.head_sha.slice(0, 7)}`);
+    }
+  }
   const latestDeployment = deployments[0];
   if (latestDeployment) {
     console.log(`[github] Deployment #${latestDeployment.id} for ${branch}: env=${latestDeployment.environment}`);
   }
 
-  // If no deployment yet, check workflow status
+  // If no deployment yet, check workflow status - FALLBACK for setups that don't create GitHub Deployments
   if (!latestDeployment) {
     if (!latestRun) {
       console.log(`[github] No workflow runs or deployments for ${branch} yet`);
@@ -237,6 +295,19 @@ export async function monitorBranchDeployment(
       return {
         status: "failure",
         vercelUrl: null,
+        workflowRunId: latestRun.id,
+        deploymentId: null,
+      };
+    }
+    // FALLBACK: Workflow completed successfully but no GitHub Deployment - treat as success
+    // (Common with Vercel for GitHub or vercel deploy in Actions that don't create deployments)
+    if (latestRun.status === "completed" && latestRun.conclusion === "success") {
+      const ref = latestRun.head_sha ?? branch;
+      const vercelUrl = await getVercelUrlFromCommitStatus(octokit, owner, repo, ref);
+      console.log(`[github] Workflow succeeded for ${branch} (no deployment record), vercelUrl from status: ${vercelUrl ?? 'none'}`);
+      return {
+        status: "success",
+        vercelUrl,
         workflowRunId: latestRun.id,
         deploymentId: null,
       };

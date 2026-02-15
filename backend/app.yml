@@ -62,11 +62,17 @@ default_permissions:
 
   # Repository contents, commits, branches, downloads, releases, and merges.
   # https://developer.github.com/v3/apps/permissions/#permission-on-contents
-  # contents: read
+  contents: read
 
-  # Deployments and deployment statuses.
+  # Deployments and deployment statuses (required for Vercel deployment polling).
   # https://developer.github.com/v3/apps/permissions/#permission-on-deployments
-  # deployments: read
+  deployments: read
+
+  # Actions workflow runs (required for deployment completion fallback).
+  actions: read
+
+  # Commit statuses (for extracting Vercel URL when no deployment record exists).
+  statuses: read
 
   # Issues and related comments, assignees, labels, and milestones.
   # https://developer.github.com/v3/apps/permissions/#permission-on-issues
