@@ -88,17 +88,17 @@ export interface DeploymentStatus {
 /**
  * Creates an authenticated Octokit client using the GitHub App credentials
  */
-export async function createGitHubClient(installationId?: number): Promise<Octokit> {
+export async function createGitHubClient(): Promise<Octokit> {
   if (!APP_ID || !PRIVATE_KEY) {
     throw new Error("GitHub App credentials (APP_ID, PRIVATE_KEY) not configured");
   }
+  if (!process.env.INSTALLATION_ID) {
+    throw new Error("GitHub App INSTALLATION_ID not set");
+  }
 
-  // If no installation ID provided, use the first installation
-  if (!installationId) {
-    installationId = parseInt(process.env.INSTALLATION_ID ?? "0", 10);
-    if (isNaN(installationId)) {
-      throw new Error("INSTALLATION_ID is not a valid number");
-    }
+  const installationId = parseInt(process.env.INSTALLATION_ID, 10);
+  if (isNaN(installationId)) {
+    throw new Error("GitHub App INSTALLATION_ID is not a valid number");
   }
 
   // Create an installation-specific client
