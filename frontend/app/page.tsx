@@ -43,15 +43,14 @@ function StatusBadge({ status }: { status: Job['status'] }) {
 
   return (
     <span
-      className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium border ${
-        isProcessing
-          ? 'bg-amber-900/30 text-amber-400 border-amber-800'
-          : isReady
-            ? 'bg-emerald-900/30 text-emerald-400 border-emerald-800'
-            : isCompleted
-              ? 'bg-slate-800 text-slate-400 border-slate-700'
-              : 'bg-slate-800 text-slate-400 border-slate-700'
-      }`}
+      className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium border ${isProcessing
+        ? 'bg-amber-900/30 text-amber-400 border-amber-800'
+        : isReady
+          ? 'bg-emerald-900/30 text-emerald-400 border-emerald-800'
+          : isCompleted
+            ? 'bg-slate-800 text-slate-400 border-slate-700'
+            : 'bg-slate-800 text-slate-400 border-slate-700'
+        }`}
     >
       {isProcessing && <Loader2 className="w-4 h-4 animate-spin" />}
       {isReady && <CheckCircle className="w-4 h-4" />}
@@ -143,7 +142,7 @@ export default function LobbyPage() {
               Active Jobs
             </h2>
             <p className="text-slate-500 text-sm">
-              Start agents from the UI or by commenting &quot;arena&quot; on a GitHub issue
+              Monitor and start groups of agents here
             </p>
           </div>
           <button
@@ -303,7 +302,7 @@ export default function LobbyPage() {
             <Rocket className="w-12 h-12 text-slate-600 mx-auto mb-4" />
             <p className="text-slate-400 mb-2">No active jobs</p>
             <p className="text-slate-500 text-sm">
-              Create a job from the form above or comment &quot;arena&quot; on a GitHub issue
+              Create a job with the button above
             </p>
           </div>
         ) : (
