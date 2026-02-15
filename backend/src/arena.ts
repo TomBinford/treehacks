@@ -221,8 +221,9 @@ ${repoContext}
 Instructions:
 - You are working on the repository \`${params.repoName}\`—all changes must target this repo
 - Create a branch named \`${branchName}\` for your pull request (e.g. \`git checkout -b ${branchName}\`)
-- Implement the fix
-- Deploy a preview`;
+- Implement the requested change or feature
+- Commit your work to \`${branchName}\` and push to origin when ready
+- Do NOT create a pull request for your work. The human will review your branch and decide whether to open a PR.`;
 
         console.log("[arena] Spawning agent", agentNum, "/", totalAgents, "model:", slot.modelId);
         const { run_id, state } = await warp.runAgent(prompt, {
